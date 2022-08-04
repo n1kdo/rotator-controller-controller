@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/html" lang="en">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=0.25">
+    <title>Web Rotator Control</title>
+</head>
+<style>
+    .bearing_readout {
+        background-color: #eff;
+        border-radius: 16px;
+        border-style: double;
+        font-family: monospace;
+        font-weight: bold;
+        font-size: 64px;
+        margin: 20px 30px;
+    }
+
+    body {
+        background-color: #ddd;
+        border-style: double;
+        font-family: sans-serif;
+        margin: 0;
+        height: 350px;
+        width: 500px;
+    }
+
+    .header {
+        text-align: center;
+        font-size: 24pt;
+        font-weight: bold;
+        border-bottom: 24px;
+    }
+
+    .left_column {
+        float: left;
+        text-align: center;
+        width: 300px;
+    }
+
+    .right_column {
+        float: left;
+        text-align: center;
+        width: 200px;
+    }
+
+    /* Clear floats after the columns */
+    .row:after {
+        content: "";
+        display: table;
+        clear: both;
+    }
+
+    #readout {
+        position: relative;
+        margin: auto;
+        text-align: left;
+    }
+
+    #dial {
+        fill: none;
+        stroke-width: 8px;
+        height: 300px;
+        width: 300px;
+    }
+
+    #pointer {
+        left: 0;
+        right: 0;
+        transform: rotate(0deg);
+        transform-origin: 50% 50%;
+    }
+
+    #requested_bearing {
+        font-size: 24px;
+        width: 3em;
+    }
+
+    .rotate_button {
+        background: transparent;
+        border: none;
+        color: blue;
+        font-size: 18px;
+        font-weight: bold;
+        position: absolute;
+        width: 40px;
+        text-align: center;
+    }
+
+    .rotate_button:hover {
+        color: red;
+    }
+
+    #turn_button {
+        background-color: #4b4;
+        border-radius: 4px;
+        font-size: 24px;
+    }
+
+    #turn_button:hover {
+        background-color: red;
+    }
+
+</style>
+<script>
+    function check_reload() {
+        // create 4 quadrants in the compass rose
+        const radius = document.querySelector('#q1').getAttribute('r');
+        const cf = 2 * Math.PI * radius;
+        const half_cf = cf / 2;
+        const quarter_cf = half_cf / 2;
+        document.querySelector('#q1').setAttribute('stroke-dasharray', cf + ',' + cf);
+        document.querySelector('#q2').setAttribute('stroke-dasharray', (half_cf + quarter_cf) + ',' + cf);
+        document.querySelector('#q3').setAttribute('stroke-dasharray', half_cf + ',' + cf);
+        document.querySelector('#q4').setAttribute('stroke-dasharray', quarter_cf + ',' + cf);
+
+        let current = Number(document.getElementById('current_bearing').innerHTML);
+        let requested = Number(document.getElementById('requested_bearing').value)
+        console.log(current, requested)
+
+        let pointer = document.querySelector('#pointer');
+        pointer.style.transform = 'rotate(' + current + 'deg)';
+
+        if (Math.abs(current - requested) > 4) {
+            setTimeout(reload_page, 1000)
+        }
+    }
+
+    function reload_page() {
+        document.getElementById('info_form').submit()
+    }
+
+    function move_to(bearing) {
+        document.getElementById('requested_bearing').value = bearing;
+        document.getElementById('info_form').submit();
+    }
+</script>
+<body onload="check_reload()">
+<div class="header">Web Rotator Controller</div>
+<div class="row">
+    <div class="left_column">
+        <div id="readout">
+            <svg id="dial">
+                <circle id="q1" cx="150" cy="150" r="100" fill="none" stroke="#4cc"></circle>
+                <circle id="q2" cx="150" cy="150" r="100" fill="none" stroke="#4b9"></circle>
+                <circle id="q3" cx="150" cy="150" r="100" fill="none" stroke="#4cc"></circle>
+                <circle id="q4" cx="150" cy="150" r="100" fill="none" stroke="#4b9"></circle>
+                <polygon id="pointer" points="147,147 153,147 153,75 156,75 150,55 144,75 147,75 147,147" fill="black"></polygon>
+            </svg>
+            <input type="button" onclick="move_to(0)" value="0" class="rotate_button" style="top:20px; left:132px;"/>
+            <input type="button" onclick="move_to(45)" value="45" class="rotate_button" style="top:60px; left:220px;"/>
+            <input type="button" onclick="move_to(90)" value="90" class="rotate_button" style="top:140px; left:250px;"/>
+            <input type="button" onclick="move_to(135)" value="135" class="rotate_button"
+                   style="top:220px; left:220px;"/>
+            <input type="button" onclick="move_to(180)" value="180" class="rotate_button"
+                   style="top:260px; left:127px;"/>
+            <input type="button" onclick="move_to(225)" value="225" class="rotate_button"
+                   style="top:220px; left:35px;"/>
+            <input type="button" onclick="move_to(270)" value="270" class="rotate_button" style="top:140px; left:5px;"/>
+            <input type="button" onclick="move_to(315)" value="315" class="rotate_button" style="top:60px; left:35px;"/>
+        </div>
+    </div>
+    <div class="right_column">
+        <p class="bearing_readout" id="current_bearing">{{ current_bearing }}</p>
+        <form id="info_form" method="GET">
+            <p>
+                <input name="requested_bearing" id="requested_bearing" type="number" min="0" max="360"
+                       value="{{ requested_bearing }}"/>
+                <button type="submit" name="turn" value="turn" id="turn_button">Turn</button>
+                <input name="last_requested_bearing" id="last_requested_bearing" type="hidden" readonly
+                       value="{{ last_requested_bearing }}"/>
+            </p>
+        </form>
+    </div>
+</div>
+</body>
+</html>
