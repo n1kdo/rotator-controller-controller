@@ -1,21 +1,38 @@
 #
 # this is async_web_main.py
 #
+import sys
 
-import network
-import time
+from web_templates import get_page_template, apply_page_template
 import settings
 
-from machine import Pin
-import uasyncio as asyncio
-#
-#import asyncio
+upython = sys.platform == 'rp2'
 
-from pico_rotator import get_rotator_bearing, set_rotator_bearing
-from web_templates import get_page_template, apply_page_template
+if upython:
+    import network
+    import time
+    from machine import Pin
+    import uasyncio as asyncio
+    from pico_rotator import get_rotator_bearing, set_rotator_bearing
+else:
+    import asyncio
+    import time
+    from windows_rotator import get_rotator_bearing, set_rotator_bearing
 
-onboard = Pin("LED", Pin.OUT, value=0)
-wlan = network.WLAN(network.STA_IF)
+if upython:
+    onboard = Pin("LED", Pin.OUT, value=0)
+    onboard.on()
+    wlan = network.WLAN(network.STA_IF)
+
+
+"""
+return milliseconds value, useful for elapsed time calculations
+"""
+def milliseconds():
+    if upython:
+        return time.ticks_ms()
+    else:
+        return int(time.time()*1000)
 
 
 def connect_to_network():
@@ -40,31 +57,49 @@ def connect_to_network():
         print('ip = ' + status[0])
 
 
+def unpack_args(s):
+    args_dict = {}
+    if s is not None:
+        args_list = s.split('&')
+        for arg in args_list:
+            arg_parts = arg.split('=')
+            if len(arg_parts) == 2:
+                args_dict[arg_parts[0]] = arg_parts[1]
+    return args_dict
+
+
 async def serve_client(reader, writer):
-    t0 = time.ticks_ms()
+    t0 = milliseconds()
     response = ''
     http_status = 200
     
     print('\n\nClient connected')
     request_line = await reader.readline()
     request = request_line.decode()
-    # print("Request:", request_line)
+    print("Request:", request)
 
-    # We are not interested in HTTP request headers, skip them
+    # HTTP request headers
+    content_length = 0
+    content_type = ''
     while True:
         header = await reader.readline()
         if len(header) == 0:
-            print('empty header line, eof?')
+            # empty header line, eof?
             break
         if header == b'\r\n':
+            # blank line at end of headers
             break
         else:
-            pass
-            #print('header', header)
+            # process header.  look for those we are interested in.
+            parts = header.decode().strip().split(':', 1)
+            if parts[0] == 'Content-Length':
+                content_length = int(parts[1].strip())
+                print('content-length = {}'.format(content_length))
+            elif parts[0] == 'Content-Type':
+                content_type = parts[1].strip()
+            print('header', header)
     
-    t1 = time.ticks_ms()
-    request = request_line.decode()
-    print("Request (str):", request)
+    t1 = milliseconds()
     pieces = request.split(' ')
     if len(pieces) == 3:
         verb = pieces[0]
@@ -75,33 +110,42 @@ async def serve_client(reader, writer):
             pieces = target.split('?')
             #print(pieces)
             target = pieces[0]
-            args = pieces[1]
+            query_args = pieces[1]
         else:
-            args = None
+            query_args = None
     else:
         verb = ''
         target = ''
         protocol = ''
-        args = ''
+        query_args = ''
         http_status = 500
         response = '<html><body><p>Bad Request</p></body></html>'
     print('{} {} {}'.format(verb, target, protocol))
 
-    if verb == 'GET' and target == '/':
-        args_dict = {}
-        if args is not None:
-            args_list = args.split('&')
-            for arg in args_list:
-                arg_parts = arg.split('=')
-                if len(arg_parts) == 2:
-                    args_dict[arg_parts[0]] = arg_parts[1]
+    args = {}
+    if verb == 'GET':
+        args = unpack_args(query_args)
+
+    if verb == "POST":
+        print('got a POST')
+        if content_length > 0:
+            data = await reader.read(content_length)
+            print('read complete')
+            print(data)
+            print(content_type)
+            if content_type == 'application/x-www-form-urlencoded':
+                args = unpack_args(data.decode())
+
+    if target == '/':
         # print('GET /')
-        # print(args_dict)
+        print(args)
         
         current_bearing = get_rotator_bearing()
 
-        requested_bearing = int(args_dict.get('requested_bearing') or current_bearing)
-        last_requested_bearing = int(args_dict.get('last_requested_bearing') or current_bearing)
+        #current_bearing = 45
+
+        requested_bearing = int(args.get('requested_bearing') or current_bearing)
+        last_requested_bearing = int(args.get('last_requested_bearing') or current_bearing)
 
         print('       current_bearing {:05n}'.format(current_bearing))
         print('last_requested_bearing {:05n}'.format(last_requested_bearing))
@@ -121,37 +165,41 @@ async def serve_client(reader, writer):
                                        requested_bearing=requested_bearing,
                                        last_requested_bearing=last_requested_bearing)
         #print('applied template')
-        writer.write('HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n')
-        writer.write(response)
+        writer.write(b'HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n')
+        writer.write(response.encode('utf-8'))
         #print('wrote response')
     else:
-        writer.write('HTTP/1.0 404 Not Found\r\nContent-type: text/html\r\n\r\n')
-        writer.write('<html><body><p>that which you seek is not here.</p></body></html>')
+        writer.write(b'HTTP/1.0 404 Not Found\r\nContent-type: text/html\r\n\r\n')
+        writer.write(b'<html><body><p>that which you seek is not here.</p></body></html>')
 
-    #tw = time.ticks_ms()
+    #tw = milliseconds()
     #print('wrote {:6.3f}'.format((tw - t0)/1000.0))
 
     await writer.drain()
-    #td = time.ticks_ms()
+    #td = milliseconds()
     #print('drained {:6.3f}'.format((td - t0)/1000.0))
     writer.close()
     await writer.wait_closed()
-    tc = time.ticks_ms()
+    tc = milliseconds()
     print('closed {:6.3f}'.format((tc - t0)/1000.0))
 
 
 async def main():
-    connect_to_network()
+    if upython:
+        connect_to_network()
 
     print('Starting web server...')
     asyncio.create_task(asyncio.start_server(serve_client, "0.0.0.0", 80))
 
     while True:
-        onboard.on()
-        #print("heartbeat")
-        await asyncio.sleep(0.1)
-        onboard.off()
-        await asyncio.sleep(0.1)
+        if upython:
+            onboard.on()
+            #print("heartbeat")
+            await asyncio.sleep(0.1)
+            onboard.off()
+            await asyncio.sleep(0.1)
+        else:
+            await asyncio.sleep(1.0)
 
 
 try:
