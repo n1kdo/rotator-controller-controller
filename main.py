@@ -107,12 +107,12 @@ async def serve_client(reader, writer):
         print('last_requested_bearing {:05n}'.format(last_requested_bearing))
         print('     requested_bearing {:05n}\n\n'.format(requested_bearing))
         print('abs {}'.format(abs(current_bearing - requested_bearing)))
-        if abs(current_bearing - requested_bearing) > 5  and requested_bearing != last_requested_bearing:
+        if current_bearing >= 0 and abs(current_bearing - requested_bearing) > 4  and requested_bearing != last_requested_bearing:
             print('sending rotor command')
             set_rotator_bearing(requested_bearing)
             last_requested_bearing = requested_bearing
-        else:
-            print('not applying rotor command')
+        #else:
+        #    print('not applying rotor command')
 
         template = get_page_template('rotator')
         print('got template')
@@ -149,9 +149,9 @@ async def main():
     while True:
         onboard.on()
         #print("heartbeat")
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(0.1)
         onboard.off()
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(0.1)
 
 
 try:

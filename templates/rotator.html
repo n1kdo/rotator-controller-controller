@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/html" lang="en">
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=0.25">
+    <meta name="viewport" content="width=device-width, initial-scale=0.8, minimum-scale=0.5, maximum-scale=2.0">
     <title>Web Rotator Control</title>
 </head>
 <style>
@@ -116,11 +116,15 @@
         let current = Number(document.getElementById('current_bearing').innerHTML);
         let requested = Number(document.getElementById('requested_bearing').value)
         console.log(current, requested)
+        
+        if (current < 0) {
+            document.getElementById('turn_button').disabled = true;
+        }
 
         let pointer = document.querySelector('#pointer');
         pointer.style.transform = 'rotate(' + current + 'deg)';
 
-        if (Math.abs(current - requested) > 4) {
+        if (Math.abs(current - requested) > 3) {
             setTimeout(reload_page, 1000)
         }
     }
@@ -130,8 +134,11 @@
     }
 
     function move_to(bearing) {
-        document.getElementById('requested_bearing').value = bearing;
-        document.getElementById('info_form').submit();
+        let current = Number(document.getElementById('current_bearing').innerHTML);
+        if (current >= 0) {
+            document.getElementById('requested_bearing').value = bearing;
+            document.getElementById('info_form').submit();
+        }
     }
 </script>
 <body onload="check_reload()">
