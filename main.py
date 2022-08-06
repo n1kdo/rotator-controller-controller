@@ -1,5 +1,5 @@
 #
-# main.py -- this is the web server for the Raspberry Pi Nano W Web Rotator Controller.
+# main.py -- this is the web server for the Raspberry Pi Pico W Web Rotator Controller.
 #
 
 __author__ = 'J. B. Otterson'
