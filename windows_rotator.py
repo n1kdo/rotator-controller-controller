@@ -32,14 +32,14 @@ def get_rotator_bearing():
                     return ERROR_BAD_DATA
 
     except SerialException as se:
-        print(se.strerror)
+        print(se)
         return ERROR_ASYNC
 
 
 def set_rotator_bearing(bearing):
     target_bearing = '{:03n}'.format(int(bearing))
     message = 'soAP1{}\r'.format(target_bearing).encode('utf-8')
-    print(message.decode())
+    # print(message.decode())
     try:
         with serial.Serial(port=ROTOR_PORT,
                            baudrate=BAUD_RATE,
@@ -49,7 +49,7 @@ def set_rotator_bearing(bearing):
                            timeout=1) as rotor_port:
             rotor_port.write(message)
     except SerialException as se:
-        print(se.strerror)
+        print(se)
         return ERROR_ASYNC
     return bearing
 

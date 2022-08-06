@@ -20,14 +20,30 @@ else:
     from windows_rotator import get_rotator_bearing, set_rotator_bearing
 
 if upython:
-    onboard = Pin("LED", Pin.OUT, value=0)
+    onboard = Pin('LED', Pin.OUT, value=0)
     onboard.on()
     wlan = network.WLAN(network.STA_IF)
 
 
-"""
-return milliseconds value, useful for elapsed time calculations
-"""
+HTTP_STATUS_TEXT = {
+    200: 'OK',
+    201: 'Created',
+    202: 'Accepted',
+    204: 'No Content',
+    301: 'Moved Permanently',
+    302: 'Moved Temporarily',
+    304: 'Not Modified',
+    400: 'Bad Request',
+    401: 'Unauthorized',
+    403: 'Forbidden',
+    404: 'Not Found',
+    500: 'Internal Server Error',
+    501: 'Not Implemented',
+    502: 'Bad Gateway',
+    503: 'Service Unavailable',
+}
+
+
 def milliseconds():
     if upython:
         return time.ticks_ms()
@@ -70,118 +86,104 @@ def unpack_args(s):
 
 async def serve_client(reader, writer):
     t0 = milliseconds()
-    response = ''
-    http_status = 200
+    response = b'<html><body>500 Bad Request</body></html>'
+    http_status = 500
+    response_content_type = 'text/html'
     
-    print('\n\nClient connected')
+    print('\nClient connected')
     request_line = await reader.readline()
-    request = request_line.decode()
-    print("Request:", request)
-
-    # HTTP request headers
-    content_length = 0
-    content_type = ''
-    while True:
-        header = await reader.readline()
-        if len(header) == 0:
-            # empty header line, eof?
-            break
-        if header == b'\r\n':
-            # blank line at end of headers
-            break
-        else:
-            # process header.  look for those we are interested in.
-            parts = header.decode().strip().split(':', 1)
-            if parts[0] == 'Content-Length':
-                content_length = int(parts[1].strip())
-                print('content-length = {}'.format(content_length))
-            elif parts[0] == 'Content-Type':
-                content_type = parts[1].strip()
-            print('header', header)
-    
-    t1 = milliseconds()
+    request = request_line.decode().strip()
+    print(request)
     pieces = request.split(' ')
-    if len(pieces) == 3:
+    if len(pieces) != 3:  # does the http request line look approximately correct?
+        http_status = 400
+        response = b'<html><body><p>Bad Request</p></body></html>'
+    else:
         verb = pieces[0]
         target = pieces[1]
         protocol = pieces[2]
-        #print(verb, target, protocol)
         if '?' in target:
             pieces = target.split('?')
-            #print(pieces)
             target = pieces[0]
             query_args = pieces[1]
         else:
-            query_args = None
-    else:
-        verb = ''
-        target = ''
-        protocol = ''
-        query_args = ''
-        http_status = 500
-        response = '<html><body><p>Bad Request</p></body></html>'
-    print('{} {} {}'.format(verb, target, protocol))
+            query_args = ''
 
-    args = {}
-    if verb == 'GET':
-        args = unpack_args(query_args)
+        #print('{} {} {} {}'.format(verb, target, protocol, query_args))
 
-    if verb == "POST":
-        print('got a POST')
-        if content_length > 0:
-            data = await reader.read(content_length)
-            print('read complete')
-            print(data)
-            print(content_type)
-            if content_type == 'application/x-www-form-urlencoded':
-                args = unpack_args(data.decode())
+        # HTTP request headers
+        request_content_length = 0
+        request_content_type = ''
+        while True:
+            header = await reader.readline()
+            if len(header) == 0:
+                # empty header line, eof?
+                break
+            if header == b'\r\n':
+                # blank line at end of headers
+                break
+            else:
+                # process headers.  look for those we are interested in.
+                parts = header.decode().strip().split(':', 1)
+                if parts[0] == 'Content-Length':
+                    request_content_length = int(parts[1].strip())
+                elif parts[0] == 'Content-Type':
+                    request_content_type = parts[1].strip()
 
-    if target == '/':
-        # print('GET /')
-        print(args)
-        
-        current_bearing = get_rotator_bearing()
+        args = {}
+        if verb == 'GET':
+            args = unpack_args(query_args)
 
-        #current_bearing = 45
+        if verb == 'POST':
+            if request_content_length > 0:
+                data = await reader.read(request_content_length)
+                if request_content_type == 'application/x-www-form-urlencoded':
+                    args = unpack_args(data.decode())
 
-        requested_bearing = int(args.get('requested_bearing') or current_bearing)
-        last_requested_bearing = int(args.get('last_requested_bearing') or current_bearing)
+        if target == '/':
+            current_bearing = get_rotator_bearing()
 
-        print('       current_bearing {:05n}'.format(current_bearing))
-        print('last_requested_bearing {:05n}'.format(last_requested_bearing))
-        print('     requested_bearing {:05n}\n\n'.format(requested_bearing))
-        print('abs {}'.format(abs(current_bearing - requested_bearing)))
-        if current_bearing >= 0 and abs(current_bearing - requested_bearing) > 4  and requested_bearing != last_requested_bearing:
-            print('sending rotor command')
-            set_rotator_bearing(requested_bearing)
-            last_requested_bearing = requested_bearing
-        #else:
-        #    print('not applying rotor command')
+            #current_bearing = 45
 
-        template = get_page_template('rotator')
-        print('got template')
-        response = apply_page_template(template,
-                                       current_bearing=current_bearing,
-                                       requested_bearing=requested_bearing,
-                                       last_requested_bearing=last_requested_bearing)
-        #print('applied template')
-        writer.write(b'HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n')
-        writer.write(response.encode('utf-8'))
-        #print('wrote response')
-    else:
-        writer.write(b'HTTP/1.0 404 Not Found\r\nContent-type: text/html\r\n\r\n')
-        writer.write(b'<html><body><p>that which you seek is not here.</p></body></html>')
+            requested_bearing = int(args.get('requested_bearing') or current_bearing)
+            last_requested_bearing = int(args.get('last_requested_bearing') or current_bearing)
 
-    #tw = milliseconds()
-    #print('wrote {:6.3f}'.format((tw - t0)/1000.0))
+            if False:
+                print('       current_bearing {:05n}'.format(current_bearing))
+                print('last_requested_bearing {:05n}'.format(last_requested_bearing))
+                print('     requested_bearing {:05n}\n\n'.format(requested_bearing))
+            if current_bearing >= 0 and abs(current_bearing - requested_bearing) > 4 and requested_bearing != last_requested_bearing:
+                print('sending rotor command')
+                set_rotator_bearing(requested_bearing)
+                last_requested_bearing = requested_bearing
+            #else:
+            #    print('not applying rotor command')
+
+            template = get_page_template('rotator')
+            response = apply_page_template(template,
+                                           current_bearing=current_bearing,
+                                           requested_bearing=requested_bearing,
+                                           last_requested_bearing=last_requested_bearing)
+            response = response.encode('utf-8')
+            http_status = 200
+
+        else:
+            http_status = 404
+            response = b'<html><body><p>that which you seek is not here.</p></body></html>'
+
+    status_text = HTTP_STATUS_TEXT.get(http_status) or 'Confused'
+    rr = '{} {} {}\r\n'.format(protocol, http_status, status_text)
+    rr += 'Content-type: {}; charset=UTF-8\r\n'.format(response_content_type)
+    rr += 'Content-length: {}\r\n\r\n'.format(len(response))
+    response = rr.encode('utf-8') + response
+    writer.write(response)
 
     await writer.drain()
-    #td = milliseconds()
-    #print('drained {:6.3f}'.format((td - t0)/1000.0))
     writer.close()
     await writer.wait_closed()
     tc = milliseconds()
-    print('closed {:6.3f}'.format((tc - t0)/1000.0))
+    print('{} {} {}'.format(request, http_status, len(response)))
+    print('client disconnected, elapsed time {:6.3f} seconds'.format((tc - t0)/1000.0))
 
 
 async def main():
@@ -189,12 +191,12 @@ async def main():
         connect_to_network()
 
     print('Starting web server...')
-    asyncio.create_task(asyncio.start_server(serve_client, "0.0.0.0", 80))
+    asyncio.create_task(asyncio.start_server(serve_client, '0.0.0.0', 80))
 
     while True:
         if upython:
             onboard.on()
-            #print("heartbeat")
+            #print('heartbeat')
             await asyncio.sleep(0.1)
             onboard.off()
             await asyncio.sleep(0.1)
@@ -204,6 +206,8 @@ async def main():
 
 try:
     asyncio.run(main())
+except KeyboardInterrupt as e:
+    pass
 finally:
     asyncio.new_event_loop()
     

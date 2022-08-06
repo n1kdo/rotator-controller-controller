@@ -5,6 +5,15 @@
     <title>Web Rotator Control</title>
 </head>
 <style>
+    .author {
+        font-size: 8pt;
+        font-weight: bold;
+        color: black;
+        text-align: right;
+        position: absolute;
+        top: 340px;
+        width: 198px;
+    }
     .bearing_readout {
         background-color: #eff;
         border-radius: 16px;
@@ -58,7 +67,7 @@
 
     #dial {
         fill: none;
-        stroke-width: 8px;
+        Sstroke-width: 8px;
         height: 300px;
         width: 300px;
     }
@@ -147,10 +156,11 @@
     <div class="left_column">
         <div id="readout">
             <svg id="dial">
-                <circle id="q1" cx="150" cy="150" r="100" fill="none" stroke="#4cc"></circle>
-                <circle id="q2" cx="150" cy="150" r="100" fill="none" stroke="#4b9"></circle>
-                <circle id="q3" cx="150" cy="150" r="100" fill="none" stroke="#4cc"></circle>
-                <circle id="q4" cx="150" cy="150" r="100" fill="none" stroke="#4b9"></circle>
+                <circle id="q1" cx="150" cy="150" r="100" fill="none" stroke-width="8px" stroke="#4ad"></circle>
+                <circle id="q2" cx="150" cy="150" r="100" fill="none" stroke-width="8px" stroke="#4da"></circle>
+                <circle id="q3" cx="150" cy="150" r="100" fill="none" stroke-width="8px" stroke="#4ad"></circle>
+                <circle id="q4" cx="150" cy="150" r="100" fill="none" stroke-width="8px" stroke="#4da"></circle>
+                <circle id="inner" cx="150" cy="150" r="96" fill="#777" stroke-width="0" stroke="green"></circle>
                 <polygon id="pointer" points="147,147 153,147 153,75 156,75 150,55 144,75 147,75 147,147" fill="black"></polygon>
             </svg>
             <input type="button" onclick="move_to(0)" value="0" class="rotate_button" style="top:20px; left:132px;"/>
@@ -177,6 +187,7 @@
                        value="{{ last_requested_bearing }}"/>
             </p>
         </form>
+        <div class="author">N1KDO 20220806</div>
     </div>
 </div>
 </body>
