@@ -3,6 +3,8 @@
 This project uses a Raspberry Pi Pico W to internet-enable a antenna 
 rotator controller that has a RS-232 interface.
 
+![](screen_capture.png)
+
 I used it for my Hy-Gain Ham IV rotator.  My Hy-Gain rotator control
 box has been modified to allow computer control with the addition of a
 Ham Supply/Idiom Press *Rotor-EZ* module.  I further hacked the rotator
@@ -24,7 +26,7 @@ the SSID and password for my wireless network.  It looks like this:
 
 ```python
 #
-# settings -- DO NOT COMMIT YOUR SECRETS TO GIT!
+# settings.py -- DO NOT COMMIT YOUR SECRETS TO GIT!
 #
 
 SSID = 'put your network SSID here'
