@@ -92,7 +92,6 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 
     #dial {
         fill: none;
-        Sstroke-width: 8px;
         height: 300px;
         width: 300px;
     }
@@ -136,7 +135,12 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 
 </style>
 <script>
-    function check_reload() {
+    let last_bearing = -99;
+    let changed_count = 0;
+
+    function page_load() {
+        get_bearing();
+
         // create 4 quadrants in the compass rose
         const radius = document.querySelector('#q1').getAttribute('r');
         const cf = 2 * Math.PI * radius;
@@ -149,7 +153,7 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 
         let current = Number(document.getElementById('current_bearing').innerHTML);
         let requested = Number(document.getElementById('requested_bearing').value)
-        console.log(current, requested)
+        //console.log(current, requested)
         
         if (current < 0) {
             document.getElementById('turn_button').disabled = true;
@@ -158,9 +162,6 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
         let pointer = document.querySelector('#pointer');
         pointer.style.transform = 'rotate(' + current + 'deg)';
 
-        if (Math.abs(current - requested) > 3) {
-            setTimeout(reload_page, 1000)
-        }
     }
 
     function reload_page() {
@@ -171,11 +172,66 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
         let current = Number(document.getElementById('current_bearing').innerHTML);
         if (current >= 0) {
             document.getElementById('requested_bearing').value = bearing;
-            document.getElementById('info_form').submit();
+            set_bearing();
         }
     }
+
+    function process_get_bearing_response(message) {
+        let bearing = parseInt(message)
+        let pointer = document.querySelector('#pointer');
+        pointer.style.transform = 'rotate(' + bearing + 'deg)';
+        document.querySelector('#current_bearing').innerHTML = message
+
+        if (changed_count > 0) {
+            if (Math.abs(bearing - last_bearing) >= 3) {
+                changed_count = 2;
+            }
+            changed_count--;
+            last_bearing = bearing;
+            setTimeout(get_bearing, 1000)
+        }
+    }
+
+    function process_set_bearing_response(message) {
+        changed_count = 2;
+        setTimeout(get_bearing, 1000);
+    }
+
+    function get_bearing() {
+        let xmlHttp = new XMLHttpRequest();
+        if (xmlHttp == null) {
+            alert("get a better browser!");
+            return;
+        }
+        xmlHttp.onreadystatechange = function () {
+            if (xmlHttp.readyState === 4 && xmlHttp.status === 200) {
+                process_get_bearing_response(xmlHttp.responseText);
+            }
+        }
+        xmlHttp.open("GET", "/rotator/bearing", true);
+        xmlHttp.send();
+    }
+
+    function set_bearing() {
+        let requested = Number(document.getElementById('requested_bearing').value)
+        let xmlHttp = new XMLHttpRequest();
+        if (xmlHttp == null) {
+            alert("get a better browser!");
+            return;
+        }
+        xmlHttp.onreadystatechange = function () {
+            if (xmlHttp.readyState === 4 && xmlHttp.status === 200) {
+                process_set_bearing_response(xmlHttp.responseText);
+            }
+        }
+        let payload = "set="+requested;
+        xmlHttp.open("POST", "/rotator/bearing", true);
+        xmlHttp.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+        xmlHttp.send(payload);
+    }
+
 </script>
-<body onload="check_reload()">
+<body onload="page_load()">
 <div class="header">Web Rotator Controller</div>
 <div class="row">
     <div class="left_column">
@@ -202,14 +258,12 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
         </div>
     </div>
     <div class="right_column">
-        <p class="bearing_readout" id="current_bearing">{{ current_bearing }}</p>
-        <form id="info_form" method="posT">
+        <p class="bearing_readout" id="current_bearing">&nbsp;</p>
+        <form id="info_form" method="POST">
             <p>
                 <input name="requested_bearing" id="requested_bearing" type="number" min="0" max="360"
                        value="{{ requested_bearing }}"/>
-                <button type="submit" name="turn" value="turn" id="turn_button">Turn</button>
-                <input name="last_requested_bearing" id="last_requested_bearing" type="hidden" readonly
-                       value="{{ last_requested_bearing }}"/>
+                <button type="button" name="turn" value="turn" id="turn_button" onclick="set_bearing()">Turn</button>
             </p>
         </form>
         <div class="author">N1KDO 20220806</div>

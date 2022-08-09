@@ -34,45 +34,71 @@ BAUD_RATE = 4800
 ERROR_NO_DATA = -10
 ERROR_BAD_DATA = -11
 ERROR_ASYNC = -12
+ERROR_BUSY = -13
+ERROR_UNKNOWN = -99
+
+last_bearing = ERROR_UNKNOWN
+last_requested_bearing = ERROR_UNKNOWN
+serial_port_locked = False
 
 
 def get_rotator_bearing():
-    try:
-        with serial.Serial(port=ROTOR_PORT,
-                           baudrate=BAUD_RATE,
-                           parity=serial.PARITY_NONE,
-                           bytesize=serial.EIGHTBITS,
-                           stopbits=serial.STOPBITS_ONE,
-                           timeout=.1) as rotor_port:
-            rotor_port.write(b'AI1\r')
-            result = rotor_port.read(4).decode()
-            if result is None or len(result) == 0:
-                return ERROR_NO_DATA
-            else:
-                if result[0] == ';':
-                    return int(result[1:])
-                else:
-                    return ERROR_BAD_DATA
+    global last_bearing
+    global serial_port_locked
 
-    except SerialException as se:
-        print(se)
-        return ERROR_ASYNC
+    if serial_port_locked:
+        return ERROR_BUSY
+    else:
+        serial_port_locked = True
+        try:
+            with serial.Serial(port=ROTOR_PORT,
+                               baudrate=BAUD_RATE,
+                               parity=serial.PARITY_NONE,
+                               bytesize=serial.EIGHTBITS,
+                               stopbits=serial.STOPBITS_ONE,
+                               timeout=.1) as rotor_port:
+                rotor_port.write(b'AI1\r')
+                result = rotor_port.read(4).decode()
+                if result is None or len(result) == 0:
+                    last_bearing = ERROR_NO_DATA
+                else:
+                    if result[0] == ';':
+                        last_bearing = int(result[1:])
+                    else:
+                        last_bearing = ERROR_BAD_DATA
+
+        except Exception as ex:
+            print(ex)
+            last_bearing = ERROR_ASYNC
+        finally:
+            serial_port_locked = False
+        return last_bearing
 
 
 def set_rotator_bearing(bearing):
-    target_bearing = '{:03n}'.format(int(bearing))
-    message = 'soAP1{}\r'.format(target_bearing).encode('utf-8')
-    # print(message.decode())
-    try:
-        with serial.Serial(port=ROTOR_PORT,
-                           baudrate=BAUD_RATE,
-                           parity=serial.PARITY_NONE,
-                           bytesize=serial.EIGHTBITS,
-                           stopbits=serial.STOPBITS_ONE,
-                           timeout=1) as rotor_port:
-            rotor_port.write(message)
-    except SerialException as se:
-        print(se)
-        return ERROR_ASYNC
-    return bearing
+    global last_requested_bearing
+    global serial_port_locked
 
+    if serial_port_locked:
+        result = ERROR_BUSY
+    else:
+        serial_port_locked = True
+        try:
+            target_bearing = '{:03n}'.format(int(bearing))
+            message = 'soAP1{}\r'.format(target_bearing).encode('utf-8')
+            # print(message.decode())
+            with serial.Serial(port=ROTOR_PORT,
+                               baudrate=BAUD_RATE,
+                               parity=serial.PARITY_NONE,
+                               bytesize=serial.EIGHTBITS,
+                               stopbits=serial.STOPBITS_ONE,
+                               timeout=1) as rotor_port:
+                rotor_port.write(message)
+            last_requested_bearing = bearing
+            result = bearing
+        except Exception as ex:
+            print(ex)
+            result = ERROR_ASYNC
+        finally:
+            serial_port_locked = False
+    return result

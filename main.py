@@ -29,7 +29,7 @@ import sys
 from web_templates import get_page_template, apply_page_template
 import settings
 
-upython = sys.platform == 'rp2'
+upython = sys.implementation.name == 'micropython'
 
 if upython:
     import network
@@ -147,6 +147,7 @@ async def serve_client(reader, writer):
                 break
             else:
                 # process headers.  look for those we are interested in.
+                #print(header)
                 parts = header.decode().strip().split(':', 1)
                 if parts[0] == 'Content-Length':
                     request_content_length = int(parts[1].strip())
@@ -184,11 +185,35 @@ async def serve_client(reader, writer):
 
             template = get_page_template('rotator')
             response = apply_page_template(template,
-                                           current_bearing=current_bearing,
-                                           requested_bearing=requested_bearing,
-                                           last_requested_bearing=last_requested_bearing)
+                                           requested_bearing=requested_bearing)
             response = response.encode('utf-8')
             http_status = 200
+
+        elif target == '/rotator/bearing':
+            #print(args)
+            requested_bearing = args.get('set')
+            if requested_bearing:
+                print(requested_bearing)
+                try:
+                    requested_bearing = int(requested_bearing)
+                    if 0 <= requested_bearing <= 360:
+                        print('sending rotor command')
+                        result = set_rotator_bearing(requested_bearing)
+                        last_requested_bearing = requested_bearing
+                        http_status = 200
+                        response = '{}\r\n'.format(result).encode('utf-8')
+                    else:
+                        http_status = 400
+                        response = b'parameter out of range\r\n'
+                except Exception as e:
+                    http_status = 500
+                    response = 'uh oh: {}'.format(e)
+            else:
+                current_bearing = get_rotator_bearing()
+                #current_bearing = 45
+                response = '{}\r\n'.format(current_bearing).encode('utf-8')
+                http_status = 200
+            response_content_type = 'text/text'
 
         else:
             http_status = 404
