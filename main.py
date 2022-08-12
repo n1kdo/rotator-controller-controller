@@ -67,6 +67,10 @@ HTTP_STATUS_TEXT = {
 }
 
 
+def safe_int(s, default):
+    return int(s) if s.isdigit() else default
+
+
 def milliseconds():
     if upython:
         return time.ticks_ms()
@@ -107,13 +111,68 @@ def unpack_args(s):
     return args_dict
 
 
-async def serve_client(reader, writer):
+async def serve_serial_client(reader, writer):
+    """
+    this provides serial compatible control.
+    use com0com with com2tcp to interface legacy apps.
+
+    all commands start with 'A'
+    all commands end with ';' or CR (ascii 13)
+    """
+    requested = -1
+    t0 = milliseconds()
+    print('\nserial client connected')
+    buffer = []
+
+    try:
+        while True:
+            data = await reader.read(1)
+            if data is None:
+                break
+            else:
+                if len(data) == 1:
+                    b = data[0]
+                    if b == ord('A'):  # commands always start with A, so reset the buffer.
+                        buffer = [b]
+                    else:
+                        if len(buffer) < 8:  # anti-gibberish test
+                            buffer.append(b)
+                            if b == ord(';') or b == 13:  # command terminator
+                                command = ''.join(map(chr, buffer))
+                                #print('command: {} '.format(command))
+                                #print(buffer)
+                                if command == 'AI1;' or command == 'AI1\r':  # get direction
+                                    bearing = get_rotator_bearing()
+                                    response = ';{:03n}'.format(bearing)
+                                    #print(response)
+                                    writer.write(response.encode('UTF-8'))
+                                    await writer.drain()
+                                elif command.startswith('AP1') and command[-1] == '\r':  # set bearing and move rotator
+                                    requested = safe_int(command[3:-1], -1)
+                                    if 0 <= requested <= 360:
+                                        set_rotator_bearing(requested)
+                                    #print(requested)
+                                elif command.startswith('AP1') and command[-1] == ';':  # set bearing
+                                    requested = safe_int(command[3:-1], -1)
+                                    #print(requested)
+                                elif command == 'AM1;' and 0 <= requested <= 360:  # move rotator
+                                    set_rotator_bearing(requested)
+        writer.close()
+        await writer.wait_closed()
+
+    except ConnectionResetError as cre:
+        print('connection reset')
+    tc = milliseconds()
+    print('serial client disconnected, elapsed time {:6.3f} seconds'.format((tc - t0)/1000.0))
+
+
+async def serve_http_client(reader, writer):
     t0 = milliseconds()
     response = b'<html><body>500 Bad Request</body></html>'
     http_status = 500
     response_content_type = 'text/html'
     
-    print('\nClient connected')
+    print('\nweb client connected')
     request_line = await reader.readline()
     request = request_line.decode().strip()
     print(request)
@@ -231,15 +290,16 @@ async def serve_client(reader, writer):
     await writer.wait_closed()
     tc = milliseconds()
     print('{} {} {}'.format(request, http_status, len(response)))
-    print('client disconnected, elapsed time {:6.3f} seconds'.format((tc - t0)/1000.0))
+    print('web client disconnected, elapsed time {:6.3f} seconds'.format((tc - t0)/1000.0))
 
 
 async def main():
     if upython:
         connect_to_network()
 
-    print('Starting web server...')
-    asyncio.create_task(asyncio.start_server(serve_client, '0.0.0.0', 80))
+    print('Starting servers...')
+    asyncio.create_task(asyncio.start_server(serve_http_client, '0.0.0.0', 80))
+    asyncio.create_task(asyncio.start_server(serve_serial_client, '0.0.0.0', 73))
 
     while True:
         if upython:
@@ -250,12 +310,16 @@ async def main():
             await asyncio.sleep(0.1)
         else:
             await asyncio.sleep(1.0)
+            print('\x08|', end='')
+            await asyncio.sleep(1.0)
+            print('\x08-', end='')
+
 
 
 try:
     asyncio.run(main())
 except KeyboardInterrupt as e:
-    pass
+    print('bye')
 finally:
     asyncio.new_event_loop()
     

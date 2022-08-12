@@ -97,10 +97,19 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
     }
 
     #pointer {
+        display: none;
         left: 0;
         right: 0;
         transform: rotate(0deg);
         transform-origin: 50% 50%;
+    }
+
+    #refresh_button {
+        background-color: transparent;
+        border: none;
+        color: blue;
+        font-size: 16px;
+        font-weight: bold;
     }
 
     #requested_bearing {
@@ -132,6 +141,7 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
     #turn_button:hover {
         background-color: red;
     }
+
 
 </style>
 <script>
@@ -180,6 +190,7 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
         let bearing = parseInt(message)
         let pointer = document.querySelector('#pointer');
         pointer.style.transform = 'rotate(' + bearing + 'deg)';
+        pointer.style.display = 'block';
         document.querySelector('#current_bearing').innerHTML = message
 
         if (changed_count > 0) {
@@ -264,6 +275,9 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
                 <input name="requested_bearing" id="requested_bearing" type="number" min="0" max="360"
                        value="{{ requested_bearing }}"/>
                 <button type="button" name="turn" value="turn" id="turn_button" onclick="set_bearing()">Turn</button>
+            </p>
+            <p>
+                <button type="button" id="refresh_button" onclick="get_bearing()">Refresh</button>
             </p>
         </form>
         <div class="author">N1KDO 20220808</div>
