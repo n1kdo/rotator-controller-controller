@@ -39,6 +39,7 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
         top: 340px;
         width: 198px;
     }
+
     .bearing_readout {
         background-color: #eff;
         border-radius: 16px;
@@ -90,6 +91,17 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
         text-align: left;
     }
 
+    div.refresh_radio {
+        border: 1px solid black;
+        margin: 20px 40px;
+        text-align: left;
+    }
+
+    .refresh_radio_label {
+        font-weight: bold;
+        text-align: center;
+    }
+
     #dial {
         fill: none;
         height: 300px;
@@ -104,17 +116,15 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
         transform-origin: 50% 50%;
     }
 
-    #refresh_button {
-        background-color: transparent;
-        border: none;
-        color: blue;
-        font-size: 16px;
-        font-weight: bold;
-    }
-
     #requested_bearing {
         font-size: 24px;
         width: 3em;
+    }
+
+    /* ensures the increment/decrement arrows always display */
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button {
+        opacity: 1;
     }
 
     .rotate_button {
@@ -141,41 +151,26 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
     #turn_button:hover {
         background-color: red;
     }
-
-
 </style>
 <script>
     let last_bearing = -99;
     let changed_count = 0;
+    let update_secs = 0;
+    let update_timeout = 0;
 
     function page_load() {
+        // update the pointer and direction readout
         get_bearing();
 
-        // create 4 quadrants in the compass rose
-        const radius = document.querySelector('#q1').getAttribute('r');
+        // make the compass circle a bit prettier
+        const radius = document.getElementById('q1').getAttribute('r');
         const cf = 2 * Math.PI * radius;
         const half_cf = cf / 2;
         const quarter_cf = half_cf / 2;
-        document.querySelector('#q1').setAttribute('stroke-dasharray', cf + ',' + cf);
-        document.querySelector('#q2').setAttribute('stroke-dasharray', (half_cf + quarter_cf) + ',' + cf);
-        document.querySelector('#q3').setAttribute('stroke-dasharray', half_cf + ',' + cf);
-        document.querySelector('#q4').setAttribute('stroke-dasharray', quarter_cf + ',' + cf);
-
-        let current = Number(document.getElementById('current_bearing').innerHTML);
-        let requested = Number(document.getElementById('requested_bearing').value)
-        //console.log(current, requested)
-        
-        if (current < 0) {
-            document.getElementById('turn_button').disabled = true;
-        }
-
-        let pointer = document.querySelector('#pointer');
-        pointer.style.transform = 'rotate(' + current + 'deg)';
-
-    }
-
-    function reload_page() {
-        document.getElementById('info_form').submit()
+        document.getElementById('q1').setAttribute('stroke-dasharray', cf + ',' + cf);
+        document.getElementById('q2').setAttribute('stroke-dasharray', (half_cf + quarter_cf) + ',' + cf);
+        document.getElementById('q3').setAttribute('stroke-dasharray', half_cf + ',' + cf);
+        document.getElementById('q4').setAttribute('stroke-dasharray', quarter_cf + ',' + cf);
     }
 
     function move_to(bearing) {
@@ -187,25 +182,52 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
     }
 
     function process_get_bearing_response(message) {
+        if (update_timeout !== 0) {
+            clearTimeout(update_timeout)
+            update_timeout = 0;
+        }
         let bearing = parseInt(message)
         let pointer = document.querySelector('#pointer');
+        let set_update_secs = 0;
+        // set the pointer and make it visible
         pointer.style.transform = 'rotate(' + bearing + 'deg)';
         pointer.style.display = 'block';
-        document.querySelector('#current_bearing').innerHTML = message
+        // set the bearing readout
+        document.getElementById('current_bearing').innerHTML = String(bearing);
+        // if the requested bearing is not set, set it the same as the current
+        if (document.getElementById('requested_bearing').value === "") {
+            document.getElementById('requested_bearing').value = String(bearing)
+        }
 
+        // automatic refresh logic
         if (changed_count > 0) {
             if (Math.abs(bearing - last_bearing) >= 3) {
                 changed_count = 2;
             }
             changed_count--;
             last_bearing = bearing;
-            setTimeout(get_bearing, 1000)
+            update_timeout = setTimeout(get_bearing, 1000);
+            set_update_secs = 1
+        } else {
+            set_update_secs = update_secs;
+            if (update_secs > 0) {
+                update_timeout = setTimeout(get_bearing, update_secs * 1000);
+            }
         }
+        // set the radio buttons to track automatic updating when rotator is moving...
+        document.getElementById('refresh_radio_0').checked = (set_update_secs === 0);
+        document.getElementById('refresh_radio_1').checked = (set_update_secs === 1);
+        document.getElementById('refresh_radio_5').checked = (set_update_secs === 5);
+        document.getElementById('refresh_radio_60').checked = (set_update_secs === 60);
+
     }
 
     function process_set_bearing_response(message) {
         changed_count = 2;
-        setTimeout(get_bearing, 1000);
+        if (update_timeout !== 0) {
+            clearTimeout(update_timeout)
+        }
+        update_timeout = setTimeout(get_bearing, 1000);
     }
 
     function get_bearing() {
@@ -235,12 +257,23 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
                 process_set_bearing_response(xmlHttp.responseText);
             }
         }
-        let payload = "set="+requested;
+        let payload = "set=" + requested;
         xmlHttp.open("POST", "/rotator/bearing", true);
         xmlHttp.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
         xmlHttp.send(payload);
     }
 
+    function set_refresh(secs) {
+        update_secs = secs
+        if (update_secs === 0) {
+            if (update_timeout !== 0) {
+                clearTimeout(update_timeout)
+                update_timeout = 0;
+            }
+        } else {
+            get_bearing();
+        }
+    }
 </script>
 <body onload="page_load()">
 <div class="header">Web Rotator Controller</div>
@@ -253,7 +286,8 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
                 <circle id="q3" cx="150" cy="150" r="100" fill="none" stroke-width="8px" stroke="#4ad"></circle>
                 <circle id="q4" cx="150" cy="150" r="100" fill="none" stroke-width="8px" stroke="#4da"></circle>
                 <circle id="inner" cx="150" cy="150" r="96" fill="#777" stroke-width="0" stroke="green"></circle>
-                <polygon id="pointer" points="147,147 153,147 153,75 156,75 150,55 144,75 147,75 147,147" fill="black"></polygon>
+                <polygon id="pointer" points="147,147 153,147 153,75 156,75 150,55 144,75 147,75 147,147"
+                         fill="black"></polygon>
             </svg>
             <input type="button" onclick="move_to(0)" value="0" class="rotate_button" style="top:20px; left:132px;"/>
             <input type="button" onclick="move_to(45)" value="45" class="rotate_button" style="top:60px; left:220px;"/>
@@ -270,17 +304,22 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
     </div>
     <div class="right_column">
         <p class="bearing_readout" id="current_bearing">&nbsp;</p>
-        <form id="info_form" method="POST">
-            <p>
-                <input name="requested_bearing" id="requested_bearing" type="number" min="0" max="360"
-                       value="{{ requested_bearing }}"/>
-                <button type="button" name="turn" value="turn" id="turn_button" onclick="set_bearing()">Turn</button>
-            </p>
-            <p>
-                <button type="button" id="refresh_button" onclick="get_bearing()">Refresh</button>
-            </p>
-        </form>
-        <div class="author">N1KDO 20220808</div>
+        <p>
+            <input name="requested_bearing" id="requested_bearing" type="number" min="0" max="360"/>
+            <button type="button" name="turn" value="turn" id="turn_button" onclick="set_bearing()">Turn</button>
+        </p>
+        <div class="refresh_radio">
+            <div class="refresh_radio_label">Auto-Refresh</div>
+            <input type="radio" name="refresh_radio" id="refresh_radio_0" value="0" onclick="set_refresh(0)"/>
+            <label for="refresh_radio_0">Never</label><br>
+            <input type="radio" name="refresh_radio" id="refresh_radio_1" value="1" onclick="set_refresh(1)" disabled/>
+            <label for="refresh_radio_1">1 second</label><br>
+            <input type="radio" name="refresh_radio" id="refresh_radio_5" value="5" onclick="set_refresh(5)"/>
+            <label for="refresh_radio_5">5 seconds</label><br>
+            <input type="radio" name="refresh_radio" id="refresh_radio_60" value="60" onclick="set_refresh(60)"/>
+            <label for="refresh_radio_60">1 minute</label><br>
+        </div>
+        <div class="author">N1KDO 20220813</div>
     </div>
 </div>
 </body>

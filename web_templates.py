@@ -24,16 +24,16 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
 
-template_cache = {}
+file_data_cache = {}
 
 
 def get_page_template(template_name):
-    template = template_cache.get(template_name)
-    if template is None:
-        with open('templates/' + template_name + '.html', 'r') as templateFile:
-            template = templateFile.read()
-            template_cache[template_name] = template
-    return template
+    file_data = file_data_cache.get(template_name)
+    if file_data is None:
+        with open('templates/' + template_name, 'r') as templateFile:
+            file_data = templateFile.read()
+            file_data_cache[template_name] = file_data
+    return file_data
 
 
 def apply_page_template(template, **kwargs):

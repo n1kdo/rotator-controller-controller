@@ -39,6 +39,7 @@ last_bearing = ERROR_UNKNOWN
 last_requested_bearing = ERROR_UNKNOWN
 serial_port_locked = False
 
+
 def get_rotator_bearing():
     global last_bearing
     global serial_port_locked
@@ -87,6 +88,5 @@ def set_rotator_bearing(bearing):
             result = ERROR_ASYNC
         finally:
             serial_port_locked = False
-            #uart.deinit()
     return result
         

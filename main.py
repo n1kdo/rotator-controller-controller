@@ -224,35 +224,15 @@ async def serve_http_client(reader, writer):
                     args = unpack_args(data.decode())
 
         if target == '/':
-            current_bearing = get_rotator_bearing()
-
-            #current_bearing = 45
-
-            requested_bearing = int(args.get('requested_bearing') or current_bearing)
-            last_requested_bearing = int(args.get('last_requested_bearing') or current_bearing)
-
-            if False:
-                print('       current_bearing {:05n}'.format(current_bearing))
-                print('last_requested_bearing {:05n}'.format(last_requested_bearing))
-                print('     requested_bearing {:05n}\n\n'.format(requested_bearing))
-            if current_bearing >= 0 and abs(current_bearing - requested_bearing) > 4 and requested_bearing != last_requested_bearing:
-                print('sending rotor command')
-                set_rotator_bearing(requested_bearing)
-                last_requested_bearing = requested_bearing
-            #else:
-            #    print('not applying rotor command')
-
-            template = get_page_template('rotator')
-            response = apply_page_template(template,
-                                           requested_bearing=requested_bearing)
+            response = get_page_template('rotator.html')
+            # response = apply_page_template(response, requested_bearing=requested_bearing)
             response = response.encode('utf-8')
             http_status = 200
 
         elif target == '/rotator/bearing':
-            #print(args)
             requested_bearing = args.get('set')
             if requested_bearing:
-                print(requested_bearing)
+                #print(requested_bearing)
                 try:
                     requested_bearing = int(requested_bearing)
                     if 0 <= requested_bearing <= 360:
@@ -269,7 +249,6 @@ async def serve_http_client(reader, writer):
                     response = 'uh oh: {}'.format(e)
             else:
                 current_bearing = get_rotator_bearing()
-                #current_bearing = 45
                 response = '{}\r\n'.format(current_bearing).encode('utf-8')
                 http_status = 200
             response_content_type = 'text/text'
@@ -312,7 +291,11 @@ async def main():
             await asyncio.sleep(1.0)
             print('\x08|', end='')
             await asyncio.sleep(1.0)
+            print('\x08/', end='')
+            await asyncio.sleep(1.0)
             print('\x08-', end='')
+            await asyncio.sleep(1.0)
+            print('\x08\\', end='')
 
 
 
