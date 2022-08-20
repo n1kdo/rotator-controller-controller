@@ -20,16 +20,3 @@ RS-232 levels presented by the antenna rotator.
 
 I used the "Thonny" IDE to load the python source code and template
 files onto the Pico W.
-
-Notes:  this repo does not include the file *settings.py* as it contains
-the SSID and password for my wireless network.  It looks like this:
-
-```python
-#
-# settings.py -- DO NOT COMMIT YOUR SECRETS TO GIT!
-#
-
-SSID = 'put your network SSID here'
-SECRET = 'put your network password here.'
-
-```

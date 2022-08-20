@@ -24,10 +24,10 @@ OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISE
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
+import json
 import sys
 
 from web_templates import get_page_template, apply_page_template
-import settings
 
 upython = sys.implementation.name == 'micropython'
 
@@ -45,7 +45,13 @@ else:
 if upython:
     onboard = Pin('LED', Pin.OUT, value=0)
     onboard.on()
-    wlan = network.WLAN(network.STA_IF)
+    blinky = Pin(2, Pin.OUT, value=0)  # blinky external LED
+    button = Pin(3, Pin.IN, Pin.PULL_UP)
+    ap_mode = button.value() == 0
+    print('read button as {}'.format(button.value()))
+    print('ap_mode={}'.format(ap_mode))
+else:
+    ap_mode = False
 
 
 HTTP_STATUS_TEXT = {
@@ -65,9 +71,28 @@ HTTP_STATUS_TEXT = {
     502: 'Bad Gateway',
     503: 'Service Unavailable',
 }
+CONFIG_FILE = 'data/config.json'
+DEFAULT_SSID = 'Rotator'
+DEFAULT_SECRET = 'North'
+DEFAULT_TCP_PORT = 73
+DEFAULT_WEB_PORT = 80
+
+def read_config():
+    config = {}
+    try:
+        with open(CONFIG_FILE, 'r') as config_file:
+            config = json.load(config_file)
+    except Exception as ex:
+        print('failed to load configuration!', ex)
+    return config
 
 
-def safe_int(s, default):
+def save_config(config):
+    with open(CONFIG_FILE, 'w') as config_file:
+        json.dump(config_file, config)
+
+
+def safe_int(s, default=-1):
     return int(s) if s.isdigit() else default
 
 
@@ -78,26 +103,46 @@ def milliseconds():
         return int(time.time()*1000)
 
 
-def connect_to_network():
-    print('Connecting to WLAN...')
-    wlan.active(True)
-    wlan.connect(settings.SSID, settings.SECRET)
-
-    max_wait = 10
-    while max_wait > 0:
-        status = wlan.status()
-        if status < 0 or status >= 3:
-            break
-    max_wait -= 1
-    print('Waiting for connection to come up, status={}'.format(status))
-    time.sleep(1)
-
-    if wlan.status() != 3:
-        raise RuntimeError('Network connection failed')
+def connect_to_network(ssid, secret, access_point_mode=False):
+    if access_point_mode:
+        print('Starting setup WLAN...')
+        wlan = network.WLAN(network.AP_IF)
+        wlan.active(False)
+        wlan.config(pm=0xa11140)  # disable power save, this is a server.
+        """
+        #define CYW43_AUTH_OPEN (0)                     ///< No authorisation required (open)
+        #define CYW43_AUTH_WPA_TKIP_PSK   (0x00200002)  ///< WPA authorisation
+        #define CYW43_AUTH_WPA2_AES_PSK   (0x00400004)  ///< WPA2 authorisation (preferred)
+        #define CYW43_AUTH_WPA2_MIXED_PSK (0x00400006)  ///< WPA2/WPA mixed authorisation
+        """
+        ssid = DEFAULT_SSID
+        secret = ''
+        if len(secret) == 0:
+            security = 0
+        else:
+            security = 0x00400004
+        wlan.config(ssid=ssid, key=secret, security=security)
+        wlan.active(True)
+        print(wlan.active())
+        print('ssid={}'.format(wlan.config('ssid')))
     else:
-        print('WLAN is up')
-        status = wlan.ifconfig()
-        print('ip = ' + status[0])
+        print('Connecting to WLAN...')
+        wlan = network.WLAN(network.STA_IF)
+        wlan.config(pm=0xa11140)  # disable power save, this is a server.
+        wlan.connect(ssid, secret)
+        max_wait = 10
+        while max_wait > 0:
+            status = wlan.status()
+            if status < 0 or status >= 3:
+                break
+            max_wait -= 1
+            print('Waiting for connection to come up, status={}'.format(status))
+            time.sleep(1)
+        if wlan.status() != network.STAT_GOT_IP:
+            raise RuntimeError('Network connection failed')
+
+    status = wlan.ifconfig()
+    print('my ip = ' + status[0])
 
 
 def unpack_args(s):
@@ -114,7 +159,9 @@ def unpack_args(s):
 async def serve_serial_client(reader, writer):
     """
     this provides serial compatible control.
-    use com0com with com2tcp to interface legacy apps.
+    use com0com with com2tcp to interface legacy apps on windows.
+
+    this code provides a serial endpoint that implements part of the DCU-3 protocol.
 
     all commands start with 'A'
     all commands end with ';' or CR (ascii 13)
@@ -139,29 +186,24 @@ async def serve_serial_client(reader, writer):
                             buffer.append(b)
                             if b == ord(';') or b == 13:  # command terminator
                                 command = ''.join(map(chr, buffer))
-                                #print('command: {} '.format(command))
-                                #print(buffer)
                                 if command == 'AI1;' or command == 'AI1\r':  # get direction
                                     bearing = get_rotator_bearing()
                                     response = ';{:03n}'.format(bearing)
-                                    #print(response)
                                     writer.write(response.encode('UTF-8'))
                                     await writer.drain()
                                 elif command.startswith('AP1') and command[-1] == '\r':  # set bearing and move rotator
                                     requested = safe_int(command[3:-1], -1)
                                     if 0 <= requested <= 360:
                                         set_rotator_bearing(requested)
-                                    #print(requested)
                                 elif command.startswith('AP1') and command[-1] == ';':  # set bearing
                                     requested = safe_int(command[3:-1], -1)
-                                    #print(requested)
                                 elif command == 'AM1;' and 0 <= requested <= 360:  # move rotator
                                     set_rotator_bearing(requested)
         writer.close()
         await writer.wait_closed()
 
-    except ConnectionResetError as cre:
-        print('connection reset')
+    except Exception as ex:
+        print('exception in serve_serial_client:', type(ex), ex)
     tc = milliseconds()
     print('serial client disconnected, elapsed time {:6.3f} seconds'.format((tc - t0)/1000.0))
 
@@ -222,10 +264,14 @@ async def serve_http_client(reader, writer):
                 data = await reader.read(request_content_length)
                 if request_content_type == 'application/x-www-form-urlencoded':
                     args = unpack_args(data.decode())
+                elif request_content_type == 'application/json':
+                    args = json.loads(data.decode())
+                else:
+                    print('warning: unhandled content_type {}'.format(request_content_type))
+                    args = data.decode()
 
         if target == '/':
             response = get_page_template('rotator.html')
-            # response = apply_page_template(response, requested_bearing=requested_bearing)
             response = response.encode('utf-8')
             http_status = 200
 
@@ -238,21 +284,41 @@ async def serve_http_client(reader, writer):
                     if 0 <= requested_bearing <= 360:
                         print('sending rotor command')
                         result = set_rotator_bearing(requested_bearing)
-                        last_requested_bearing = requested_bearing
                         http_status = 200
                         response = '{}\r\n'.format(result).encode('utf-8')
                     else:
                         http_status = 400
-                        response = b'parameter out of range\r\n'
-                except Exception as e:
+                        response = 'parameter out of range\r\n'.encode('utf-8')
+                except Exception as ex:
                     http_status = 500
-                    response = 'uh oh: {}'.format(e)
+                    response = 'uh oh: {}'.format(ex).encode('utf-8')
             else:
                 current_bearing = get_rotator_bearing()
                 response = '{}\r\n'.format(current_bearing).encode('utf-8')
                 http_status = 200
             response_content_type = 'text/text'
-
+        elif target == '/config':
+            if verb == 'GET':
+                payload = read_config()
+                payload.pop('secret')  # do not return the secret
+                response = json.dumps(payload).encode('utf-8')
+                response_content_type = 'application/json'
+                http_status = 200
+            elif verb == 'POST':
+                web_port = args.get('web_port') or -1
+                tcp_port = args.get('tcp_port') or -1
+                ssid = args.get('SSID') or ''
+                secret = args.get('secret') or ''
+                if 0 <= web_port <= 65535 and 0 <= tcp_port <= 65535 and 0 < len(ssid) <= 64 and len(secret) < 64:
+                    config = {'SSID':ssid, 'secret':secret, 'tcp_port':tcp_port, 'web_port':web_port}
+                    save_config(config)
+                    http_status = 200
+                    response = 'ok\r\n'.encode('utf-8')
+                    response_content_type = 'text/text'
+                else:
+                    response = 'parameter out of range\r\n'.encode('utf-8')
+                    http_status = 400
+                    response_content_type = 'text/text'
         else:
             http_status = 404
             response = b'<html><body><p>that which you seek is not here.</p></body></html>'
@@ -273,12 +339,27 @@ async def serve_http_client(reader, writer):
 
 
 async def main():
-    if upython:
-        connect_to_network()
+    config = read_config()
+    tcp_port = safe_int(config.get('tcp_port') or DEFAULT_TCP_PORT, DEFAULT_TCP_PORT)
+    if tcp_port < 0 or tcp_port > 65535:
+        tcp_port = DEFAULT_TCP_PORT
+    web_port = safe_int(config.get('web_port') or DEFAULT_WEB_PORT, DEFAULT_WEB_PORT)
+    if web_port < 0 or web_port > 65535:
+        web_port = DEFAULT_WEB_PORT
+    ssid = config.get('SSID') or ''
+    if len(ssid) == 0 or len(ssid) > 64:
+        ssid = DEFAULT_SSID
+    secret = config.get('secret') or ''
+    if len(secret) > 64:
+        secret = ''
 
-    print('Starting servers...')
-    asyncio.create_task(asyncio.start_server(serve_http_client, '0.0.0.0', 80))
-    asyncio.create_task(asyncio.start_server(serve_serial_client, '0.0.0.0', 73))
+    if upython:
+        connect_to_network(ssid=ssid, secret=secret, access_point_mode=ap_mode)
+
+    print('Starting web service on port {}'.format(web_port))
+    asyncio.create_task(asyncio.start_server(serve_http_client, '0.0.0.0', web_port))
+    print('Starting tcp service on port {}'.format(tcp_port))
+    asyncio.create_task(asyncio.start_server(serve_serial_client, '0.0.0.0', tcp_port))
 
     while True:
         if upython:
@@ -296,7 +377,6 @@ async def main():
             print('\x08-', end='')
             await asyncio.sleep(1.0)
             print('\x08\\', end='')
-
 
 
 try:
