@@ -40,6 +40,11 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
         width: 198px;
     }
 
+    .author a:link, a:visited, a:hover {
+        color: black;
+        text-decoration: none;
+    }
+
     .bearing_readout {
         background-color: #eff;
         border-radius: 16px;
@@ -152,6 +157,7 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
         background-color: red;
     }
 </style>
+<!--suppress JSUnusedLocalSymbols -->
 <script>
     let last_bearing = -99;
     let changed_count = 0;
@@ -188,7 +194,7 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
         }
         let bearing = parseInt(message)
         let pointer = document.querySelector('#pointer');
-        let set_update_secs = 0;
+        let set_update_secs;
         // set the pointer and make it visible
         pointer.style.transform = 'rotate(' + bearing + 'deg)';
         pointer.style.display = 'block';
@@ -305,6 +311,7 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
     <div class="right_column">
         <p class="bearing_readout" id="current_bearing">&nbsp;</p>
         <p>
+            <!--suppress HtmlFormInputWithoutLabel -->
             <input name="requested_bearing" id="requested_bearing" type="number" min="0" max="360"/>
             <button type="button" name="turn" value="turn" id="turn_button" onclick="set_bearing()">Turn</button>
         </p>
@@ -319,7 +326,7 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
             <input type="radio" name="refresh_radio" id="refresh_radio_60" value="60" onclick="set_refresh(60)"/>
             <label for="refresh_radio_60">1 minute</label><br>
         </div>
-        <div class="author">N1KDO 20220813</div>
+        <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20220820</div>
     </div>
 </div>
 </body>

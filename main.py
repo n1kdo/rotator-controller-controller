@@ -77,22 +77,25 @@ DEFAULT_SECRET = 'North'
 DEFAULT_TCP_PORT = 73
 DEFAULT_WEB_PORT = 80
 
+
 def read_config():
     config = {}
     try:
         with open(CONFIG_FILE, 'r') as config_file:
             config = json.load(config_file)
     except Exception as ex:
-        print('failed to load configuration!', ex)
+        print('failed to load configuration!', type(ex), ex)
     return config
 
 
 def save_config(config):
     with open(CONFIG_FILE, 'w') as config_file:
-        json.dump(config_file, config)
+        json.dump(config, config_file)
 
 
 def safe_int(s, default=-1):
+    if type(s) == int:
+        return s
     return int(s) if s.isdigit() else default
 
 
@@ -129,6 +132,7 @@ def connect_to_network(ssid, secret, access_point_mode=False):
         print('Connecting to WLAN...')
         wlan = network.WLAN(network.STA_IF)
         wlan.config(pm=0xa11140)  # disable power save, this is a server.
+        wlan.active(True)
         wlan.connect(ssid, secret)
         max_wait = 10
         while max_wait > 0:
@@ -142,7 +146,9 @@ def connect_to_network(ssid, secret, access_point_mode=False):
             raise RuntimeError('Network connection failed')
 
     status = wlan.ifconfig()
-    print('my ip = ' + status[0])
+    ip_address = status[0]
+    print('my ip = {}'.format(ip_address))
+    return ip_address
 
 
 def unpack_args(s):
@@ -272,7 +278,9 @@ async def serve_http_client(reader, writer):
 
         if target == '/':
             response = get_page_template('rotator.html')
-            response = response.encode('utf-8')
+            http_status = 200
+        elif target == '/setup.html':
+            response = get_page_template('setup.html')
             http_status = 200
 
         elif target == '/rotator/bearing':
@@ -300,17 +308,20 @@ async def serve_http_client(reader, writer):
         elif target == '/config':
             if verb == 'GET':
                 payload = read_config()
-                payload.pop('secret')  # do not return the secret
+                # payload.pop('secret')  # do not return the secret
                 response = json.dumps(payload).encode('utf-8')
                 response_content_type = 'application/json'
                 http_status = 200
             elif verb == 'POST':
-                web_port = args.get('web_port') or -1
-                tcp_port = args.get('tcp_port') or -1
+                tcp_port = args.get('tcp_port') or '-1'
+                web_port = args.get('web_port') or '-1'
+                tcp_port_int = safe_int(tcp_port, -2)
+                web_port_int = safe_int(web_port, -2)
                 ssid = args.get('SSID') or ''
                 secret = args.get('secret') or ''
-                if 0 <= web_port <= 65535 and 0 <= tcp_port <= 65535 and 0 < len(ssid) <= 64 and len(secret) < 64:
-                    config = {'SSID':ssid, 'secret':secret, 'tcp_port':tcp_port, 'web_port':web_port}
+                if 0 <= web_port_int <= 65535 and 0 <= tcp_port_int <= 65535 and 0 < len(ssid) <= 64 and len(secret) < 64 and len(args) == 4:
+                    config = {'SSID': ssid, 'secret': secret, 'tcp_port': tcp_port, 'web_port': web_port}
+                    #config = json.dumps(args)
                     save_config(config)
                     http_status = 200
                     response = 'ok\r\n'.encode('utf-8')
@@ -379,6 +390,7 @@ async def main():
             print('\x08\\', end='')
 
 
+print('starting')
 try:
     asyncio.run(main())
 except KeyboardInterrupt as e:

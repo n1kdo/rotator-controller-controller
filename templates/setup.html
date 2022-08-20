@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/html" lang="en">
+<!--
+
+Web Rotator Controller for Raspberry Pi Pico W
+
+Copyright 2022, J. B. Otterson N1KDO.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+  1. Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
+  2. Redistributions in binary form must reproduce the above copyright notice,
+     this list of conditions and the following disclaimer in the documentation
+     and/or other materials provided with the distribution.
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
+OF THE POSSIBILITY OF SUCH DAMAGE.
+
+-->
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=0.8, minimum-scale=0.5, maximum-scale=2.0">
+    <title>Web Rotator Control</title>
+</head>
+<style>
+    .author {
+        font-size: 8pt;
+        font-weight: bold;
+        color: black;
+        text-align: right;
+        position: absolute;
+        top: 340px;
+        width: 498px;
+    }
+
+    .author a:link, a:visited, a:hover {
+        color: black;
+        text-decoration: none;
+    }
+
+    body {
+        background-color: #ddd;
+        border-style: double;
+        font-family: sans-serif;
+        margin: 0;
+        height: 350px;
+        width: 500px;
+    }
+
+    .config_form {
+        padding: 20px 49px;
+        width: 400px;
+    }
+
+    .config_inner {
+        border-style: double;
+        border-radius: 4px;
+        padding: 10px;
+    }
+
+    input {
+        display: table-cell;
+        font-family: inherit;
+    }
+
+    input[type=number] {
+        display: table-cell;
+        width: 5em;
+        text-align: left;
+    }
+
+    /* ensures the increment/decrement arrows always display */
+    input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button {
+        opacity: 1;
+    }
+
+    input[type=button] {
+        display: inline-grid;
+        font-weight: bold;
+        font-size: 12pt;
+        width: 5em;
+    }
+
+    .centered {
+        text-align: center;
+    }
+
+    form {
+        display: table;
+        padding: 20px 50px;
+    }
+
+    form p {
+        display: table-row;
+        line-height: 2em;
+    }
+
+    label {
+        display: table-cell;
+        text-align: right;
+        width: 40%;
+    }
+
+    .header {
+        text-align: center;
+        font-size: 24pt;
+        font-weight: bold;
+        margin-top: 4px;
+    }
+
+</style>
+<script>
+
+    function page_load() {
+        get_config();
+    }
+
+    function get_config() {
+        let xmlHttp = new XMLHttpRequest();
+        if (xmlHttp == null) {
+            alert("get a better browser!");
+            return;
+        }
+        xmlHttp.onreadystatechange = function () {
+            if (xmlHttp.readyState === 4 && xmlHttp.status === 200) {
+                process_get_config_response(xmlHttp.responseText);
+            }
+        }
+        xmlHttp.open("GET", "/config", true);
+        xmlHttp.send();
+    }
+
+    function process_get_config_response(message) {
+        let config = JSON.parse(message);
+        document.getElementById("ssid_input").value = config.SSID;
+        let secret = "";
+        if (config.secret !== undefined) {
+            secret = config.secret;
+        }
+        document.getElementById("secret_input").value = secret;
+        document.getElementById("tcp_port_input").value = config.tcp_port;
+        document.getElementById("web_port_input").value = config.web_port;
+    }
+
+    function set_config() {
+        // get the form data
+        let ssid = document.getElementById("ssid_input").value
+        let secret = document.getElementById("secret_input").value
+        let tcp_port = document.getElementById("tcp_port_input").value
+        let web_port = document.getElementById("web_port_input").value
+        // validate the form data
+        if (ssid.length < 1 || ssid.length > 64) {
+            alert("Invalid SSID!");
+            return;
+        }
+        if (secret.length > 64) {
+            alert("Invalid Secret");
+            return;
+        }
+        let x = parseInt(tcp_port);
+        if (x < 0 || x > 65535) {
+            alert("Invalid TCP Port");
+            return;
+        }
+        x = parseInt(web_port);
+        if (x < 0 || x > 65535) {
+            alert("Invalid Web Port");
+            return;
+        }
+        // construct a new JSON string to send to the host
+        let config = {};
+        config.SSID = ssid;
+        config.secret = secret;
+        config.tcp_port = tcp_port;
+        config.web_port = web_port;
+        let payload = JSON.stringify(config);
+
+        let xmlHttp = new XMLHttpRequest();
+        if (xmlHttp == null) {
+            alert("get a better browser!");
+            return;
+        }
+        xmlHttp.onreadystatechange = function () {
+            if (xmlHttp.readyState === 4 && xmlHttp.status === 200) {
+                process_set_config_response(xmlHttp.responseText);
+            }
+        }
+        xmlHttp.open("POST", "/config", true);
+        xmlHttp.setRequestHeader("Content-Type", "application/json");
+        xmlHttp.send(payload);
+    }
+
+    function process_set_config_response(message) {
+        //alert(message);
+    }
+
+    function cancel_page() {
+        window.location.href = "/";
+    }
+
+</script>
+<body onload="page_load()">
+<div class="header">Web Rotator Controller Setup</div>
+<div class="config_form">
+    <div class="config_inner">
+        <form>
+            <p>
+                <label for="ssid_input">SSID:</label>
+                <input type="text" id="ssid_input" maxlength="64">
+            </p>
+            <p>
+                <label for="secret_input">Secret:</label>
+                <input type="password" id="secret_input" maxlength="64">
+            </p>
+            <p>
+                <label for="tcp_port_input">TCP Port:</label>
+                <input type="number" id="tcp_port_input" min="0" max="65535">
+            </p>
+            <p>
+                <label for="web_port_input">Web Port:</label>
+                <input type="number" id="web_port_input" min="0" max="65535"/>
+            </p>
+        </form>
+        <div class="centered">
+            <p>
+                <input type="button" id="cancel_button" value="Cancel" onclick="cancel_page()"/>
+                <input type="button" id="reset_button" value="Reset" onclick="get_config()"/>
+                <input type="button" id="apply_button" value="Apply" onclick="set_config()"/>
+            </p>
+        </div>
+    </div>
+</div>
+<div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20220820</div>
+</body>
+</html>
