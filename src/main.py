@@ -77,6 +77,26 @@ DEFAULT_SECRET = 'North'
 DEFAULT_TCP_PORT = 73
 DEFAULT_WEB_PORT = 80
 
+PERIOD = 0.150
+""" 
+patterns are list of ON,OFF durations.  Always an even number!
+these are Morse code letters. 
+"""
+BLINK_PATTERNS = {
+    'A': [PERIOD, PERIOD, PERIOD * 3, PERIOD * 3],  # dit dah
+    'C': [PERIOD * 3, PERIOD, PERIOD, PERIOD, PERIOD * 3, PERIOD, PERIOD, PERIOD * 3],  # dah dit dah dit
+    'E': [PERIOD, PERIOD * 3],  # dit
+    'I': [PERIOD, PERIOD, PERIOD, PERIOD * 3],  # dit dit
+    'S': [PERIOD, PERIOD, PERIOD, PERIOD, PERIOD, PERIOD * 3],  # dit dit dit
+    'H': [PERIOD, PERIOD, PERIOD, PERIOD, PERIOD, PERIOD, PERIOD, PERIOD * 3],  # dit dit dit dit
+
+    'O': [PERIOD * 3, PERIOD, PERIOD * 3, PERIOD, PERIOD * 3, PERIOD * 3],  # dah dah dah
+    'N': [PERIOD * 3, PERIOD, PERIOD, PERIOD * 3],  # dah dit
+    'D': [PERIOD * 3, PERIOD, PERIOD, PERIOD, PERIOD, PERIOD * 3],  # dah dit dit
+    'B': [PERIOD * 3, PERIOD, PERIOD, PERIOD, PERIOD, PERIOD, PERIOD, PERIOD * 3],  # dah dit dit dit
+}
+blink_code = 'O'
+
 
 def read_config():
     config = {}
@@ -145,6 +165,7 @@ def connect_to_network(ssid, secret, access_point_mode=False):
         if wlan.status() != network.STAT_GOT_IP:
             raise RuntimeError('Network connection failed')
 
+    onboard.off()
     status = wlan.ifconfig()
     ip_address = status[0]
     print('my ip = {}'.format(ip_address))
@@ -374,11 +395,15 @@ async def main():
 
     while True:
         if upython:
-            onboard.on()
-            #print('heartbeat')
-            await asyncio.sleep(0.1)
-            onboard.off()
-            await asyncio.sleep(0.1)
+            blink_pattern = BLINK_PATTERNS.get(blink_code) or [0.50, 0.50]
+            blink_list = [elem for elem in BLINK_PATTERNS[blink_code]]
+            while len(blink_list) > 0:
+                onboard.on()
+                blinky.on()
+                await asyncio.sleep(blink_list.pop(0))
+                onboard.off()
+                blinky.off()
+                await asyncio.sleep(blink_list.pop(0))
         else:
             await asyncio.sleep(1.0)
             print('\x08|', end='')

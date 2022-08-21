@@ -30,7 +30,7 @@ file_data_cache = {}
 def get_page_template(template_name):
     file_data = file_data_cache.get(template_name)
     if file_data is None:
-        with open('templates/' + template_name, 'r') as templateFile:
+        with open('templates/' + template_name, 'rb') as templateFile:
             file_data = templateFile.read()
             file_data_cache[template_name] = file_data
     return file_data
@@ -43,5 +43,6 @@ def apply_page_template(template, **kwargs):
             template = template.replace(target, str(v))
         else:
             print(f'warning: cannot find target {k}')
+    # this should check for any remaining '{{\s.*\s}}' in the template... FIXME TODO
     return template
 
