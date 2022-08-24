@@ -201,6 +201,27 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
         //alert(message);
     }
 
+
+    function restart() {
+        let xmlHttp = new XMLHttpRequest();
+        if (xmlHttp == null) {
+            alert("get a better browser!");
+            return;
+        }
+        xmlHttp.onreadystatechange = function () {
+            if (xmlHttp.readyState === 4 && xmlHttp.status === 200) {
+                process_restart_response(xmlHttp.responseText);
+            }
+        }
+        xmlHttp.open("GET", "/restart", true);
+        xmlHttp.send();
+    }
+
+    function process_restart_response(message) {
+        alert('Device will now restart...');
+        cancel_page();
+    }
+
     function cancel_page() {
         window.location.href = "/";
     }
@@ -232,6 +253,7 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
             <p>
                 <input type="button" id="cancel_button" value="Cancel" onclick="cancel_page()"/>
                 <input type="button" id="reset_button" value="Reset" onclick="get_config()"/>
+                <input type="button" id="reset_button" value="Restart" onclick="restart()"/>
                 <input type="button" id="apply_button" value="Apply" onclick="set_config()"/>
             </p>
         </div>

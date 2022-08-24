@@ -40,7 +40,23 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
         width: 198px;
     }
 
+
     .author a:link, a:visited, a:hover {
+        color: black;
+        text-decoration: none;
+    }
+
+    .setup {
+        font-size: 8pt;
+        font-weight: bold;
+        color: black;
+        text-align: left;
+        position: absolute;
+        top: 340px;
+        width: 2px;
+    }
+
+    .setup a:link, a:visited, a:hover {
         color: black;
         text-decoration: none;
     }
@@ -307,6 +323,7 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
             <input type="button" onclick="move_to(270)" value="270" class="rotate_button" style="top:140px; left:5px;"/>
             <input type="button" onclick="move_to(315)" value="315" class="rotate_button" style="top:60px; left:35px;"/>
         </div>
+        <div class="setup"><a href="/setup.html">Setup</a></div>
     </div>
     <div class="right_column">
         <p class="bearing_readout" id="current_bearing">&nbsp;</p>

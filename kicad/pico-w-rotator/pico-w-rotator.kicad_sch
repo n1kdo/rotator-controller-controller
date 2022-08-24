@@ -5,9 +5,10 @@
   (paper "A")
 
   (title_block
-    (title "N1KDO Pico-W Rotator IOT Interface")
-    (date "2022-08-17")
-    (rev "0.1")
+    (title "PICO-W Wireless Rotator Controller")
+    (date "2022-08-21")
+    (rev "0.2")
+    (comment 4 "Copyright (C) 2022 J. B. Otterson N1KDO")
   )
 
   (lib_symbols

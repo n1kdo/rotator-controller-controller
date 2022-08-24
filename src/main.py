@@ -95,7 +95,9 @@ BLINK_PATTERNS = {
     'D': [PERIOD * 3, PERIOD, PERIOD, PERIOD, PERIOD, PERIOD * 3],  # dah dit dit
     'B': [PERIOD * 3, PERIOD, PERIOD, PERIOD, PERIOD, PERIOD, PERIOD, PERIOD * 3],  # dah dit dit dit
 }
+
 blink_code = 'O'
+restart = False
 
 
 def read_config():
@@ -127,6 +129,7 @@ def milliseconds():
 
 
 def connect_to_network(ssid, secret, access_point_mode=False):
+    global blink_code
     if access_point_mode:
         print('Starting setup WLAN...')
         wlan = network.WLAN(network.AP_IF)
@@ -148,8 +151,11 @@ def connect_to_network(ssid, secret, access_point_mode=False):
         wlan.active(True)
         print(wlan.active())
         print('ssid={}'.format(wlan.config('ssid')))
+        blink_code = 'A'
+
     else:
         print('Connecting to WLAN...')
+        blink_code = 'C'  # for connection
         wlan = network.WLAN(network.STA_IF)
         wlan.config(pm=0xa11140)  # disable power save, this is a server.
         wlan.active(True)
@@ -164,6 +170,7 @@ def connect_to_network(ssid, secret, access_point_mode=False):
             time.sleep(1)
         if wlan.status() != network.STAT_GOT_IP:
             raise RuntimeError('Network connection failed')
+        blink_code = 'O'
 
     onboard.off()
     status = wlan.ifconfig()
@@ -236,11 +243,12 @@ async def serve_serial_client(reader, writer):
 
 
 async def serve_http_client(reader, writer):
+    global restart
     t0 = milliseconds()
     response = b'<html><body>500 Bad Request</body></html>'
     http_status = 500
     response_content_type = 'text/html'
-    
+    response_extra_headers = []
     print('\nweb client connected')
     request_line = await reader.readline()
     request = request_line.decode().strip()
@@ -298,12 +306,14 @@ async def serve_http_client(reader, writer):
                     args = data.decode()
 
         if target == '/':
+            http_status = 301
+            response_extra_headers.append('Location: /rotator.html')
+        elif target == '/rotator.html':
             response = get_page_template('rotator.html')
             http_status = 200
         elif target == '/setup.html':
             response = get_page_template('setup.html')
             http_status = 200
-
         elif target == '/rotator/bearing':
             requested_bearing = args.get('set')
             if requested_bearing:
@@ -351,14 +361,24 @@ async def serve_http_client(reader, writer):
                     response = 'parameter out of range\r\n'.encode('utf-8')
                     http_status = 400
                     response_content_type = 'text/text'
+        elif target == '/restart' and upython:
+            restart = True
+            http_status = 200
+            response = 'ok\r\n'.encode('utf-8')
+            response_content_type = 'text/text'
         else:
             http_status = 404
             response = b'<html><body><p>that which you seek is not here.</p></body></html>'
 
     status_text = HTTP_STATUS_TEXT.get(http_status) or 'Confused'
     rr = '{} {} {}\r\n'.format(protocol, http_status, status_text)
-    rr += 'Content-type: {}; charset=UTF-8\r\n'.format(response_content_type)
-    rr += 'Content-length: {}\r\n\r\n'.format(len(response))
+    if response_content_type is not None and len(response_content_type) > 0:
+        rr += 'Content-type: {}; charset=UTF-8\r\n'.format(response_content_type)
+    if len(response) > 0:
+        rr += 'Content-length: {}\r\n'.format(len(response))
+    for header in response_extra_headers:
+        rr += '{}\r\n'.format(header)
+    rr += '\r\n'
     response = rr.encode('utf-8') + response
     writer.write(response)
 
@@ -385,13 +405,21 @@ async def main():
     if len(secret) > 64:
         secret = ''
 
+    connected = True
     if upython:
-        connect_to_network(ssid=ssid, secret=secret, access_point_mode=ap_mode)
+        try:
+            connect_to_network(ssid=ssid, secret=secret, access_point_mode=ap_mode)
+        except Exception as ex:
+            connected = False
+            print(type(ex), ex)
 
-    print('Starting web service on port {}'.format(web_port))
-    asyncio.create_task(asyncio.start_server(serve_http_client, '0.0.0.0', web_port))
-    print('Starting tcp service on port {}'.format(tcp_port))
-    asyncio.create_task(asyncio.start_server(serve_serial_client, '0.0.0.0', tcp_port))
+    if connected:
+        print('Starting web service on port {}'.format(web_port))
+        asyncio.create_task(asyncio.start_server(serve_http_client, '0.0.0.0', web_port))
+        print('Starting tcp service on port {}'.format(tcp_port))
+        asyncio.create_task(asyncio.start_server(serve_serial_client, '0.0.0.0', tcp_port))
+    else:
+        print('no network connection')
 
     while True:
         if upython:
@@ -404,6 +432,8 @@ async def main():
                 onboard.off()
                 blinky.off()
                 await asyncio.sleep(blink_list.pop(0))
+            if restart:
+                machine.soft_reset()
         else:
             await asyncio.sleep(1.0)
             print('\x08|', end='')
