@@ -79,6 +79,13 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
         width: 500px;
     }
 
+    .compassbg {
+        position: relative;
+        left: 0px;
+        top: 40px;
+        z-index: -1;
+    }
+
     .header {
         text-align: center;
         font-size: 24pt;
@@ -106,9 +113,10 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
     }
 
     #readout {
-        position: relative;
-        margin: auto;
-        text-align: left;
+        position: absolute;
+        Zmargin: auto;
+        Ztext-align: left;
+        top: 30px;
     }
 
     div.refresh_radio {
@@ -300,13 +308,14 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 <div class="header">Web Rotator Controller</div>
 <div class="row">
     <div class="left_column">
+        <img class="compassbg" src="/compass-background.png" width=200" height="200" />
         <div id="readout">
             <svg id="dial">
                 <circle id="q1" cx="150" cy="150" r="100" fill="none" stroke-width="8px" stroke="#4ad"></circle>
                 <circle id="q2" cx="150" cy="150" r="100" fill="none" stroke-width="8px" stroke="#4da"></circle>
                 <circle id="q3" cx="150" cy="150" r="100" fill="none" stroke-width="8px" stroke="#4ad"></circle>
                 <circle id="q4" cx="150" cy="150" r="100" fill="none" stroke-width="8px" stroke="#4da"></circle>
-                <circle id="inner" cx="150" cy="150" r="96" fill="#777" stroke-width="0" stroke="green"></circle>
+                <!--<circle id="inner" cx="150" cy="150" r="96" fill="#777" stroke-width="0" stroke="green"></circle>-->
                 <polygon id="pointer" points="147,147 153,147 153,75 156,75 150,55 144,75 147,75 147,147"
                          fill="black"></polygon>
             </svg>

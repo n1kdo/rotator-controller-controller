@@ -27,8 +27,6 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 import json
 import sys
 
-from web_templates import get_page_template, apply_page_template
-
 upython = sys.implementation.name == 'micropython'
 
 if upython:
@@ -70,6 +68,17 @@ HTTP_STATUS_TEXT = {
     501: 'Not Implemented',
     502: 'Bad Gateway',
     503: 'Service Unavailable',
+}
+FILE_EXTENSION_TO_CONTENT_TYPE_MAP = {
+    'gif': 'image/gif',
+    'html': 'text/html',
+    'ico': 'image/vnd.microsoft.icon',
+    'json': 'application/json',
+    'jpeg': 'image/jpeg',
+    'jpg': 'image/jpeg',
+    'png': 'image/png',
+    'txt': 'text/text',
+    '*': 'application/octet-stream',
 }
 CONFIG_FILE = 'data/config.json'
 DEFAULT_SSID = 'Rotator'
@@ -126,6 +135,20 @@ def milliseconds():
         return time.ticks_ms()
     else:
         return int(time.time()*1000)
+
+
+def read_content(filename):
+    extension = filename.split('.')[-1]
+    content_type = FILE_EXTENSION_TO_CONTENT_TYPE_MAP.get(extension)
+
+    print('extension: {}'.format(extension))
+    try:
+        with open('content/' + filename, 'rb') as content_file:
+            content = content_file.read()
+    except FileNotFoundError:
+        content = None
+        content_type = None
+    return content, content_type
 
 
 def connect_to_network(ssid, secret, access_point_mode=False):
@@ -308,12 +331,6 @@ async def serve_http_client(reader, writer):
         if target == '/':
             http_status = 301
             response_extra_headers.append('Location: /rotator.html')
-        elif target == '/rotator.html':
-            response = get_page_template('rotator.html')
-            http_status = 200
-        elif target == '/setup.html':
-            response = get_page_template('setup.html')
-            http_status = 200
         elif target == '/rotator/bearing':
             requested_bearing = args.get('set')
             if requested_bearing:
@@ -367,8 +384,13 @@ async def serve_http_client(reader, writer):
             response = 'ok\r\n'.encode('utf-8')
             response_content_type = 'text/text'
         else:
-            http_status = 404
-            response = b'<html><body><p>that which you seek is not here.</p></body></html>'
+            content_file = target[1:] if target[0] == '/' else target
+            response, response_content_type = read_content(content_file)
+            if response is None:
+                http_status = 404
+                response = b'<html><body><p>that which you seek is not here.</p></body></html>'
+            else:
+                http_status = 200
 
     status_text = HTTP_STATUS_TEXT.get(http_status) or 'Confused'
     rr = '{} {} {}\r\n'.format(protocol, http_status, status_text)
