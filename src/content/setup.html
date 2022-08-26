@@ -1,30 +1,6 @@
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/html" lang="en">
-<!--
-
-Web Rotator Controller for Raspberry Pi Pico W
-
-Copyright 2022, J. B. Otterson N1KDO.
-
-Redistribution and use in source and binary forms, with or without modification,
-are permitted provided that the following conditions are met:
-  1. Redistributions of source code must retain the above copyright notice,
-     this list of conditions and the following disclaimer.
-  2. Redistributions in binary form must reproduce the above copyright notice,
-     this list of conditions and the following disclaimer in the documentation
-     and/or other materials provided with the distribution.
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
-IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
-INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
-BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
-OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
-OF THE POSSIBILITY OF SUCH DAMAGE.
-
--->
+<!-- Copyright 2022, J. B. Otterson N1KDO. -->
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=0.8, minimum-scale=0.5, maximum-scale=2.0">
     <title>Web Rotator Control</title>
@@ -33,14 +9,13 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
     .author {
         font-size: 8pt;
         font-weight: bold;
-        color: black;
         text-align: right;
         position: absolute;
         top: 340px;
         width: 498px;
     }
 
-    .author a:link, a:visited, a:hover {
+    .author a:link, .author a:visited, .author a:hover {
         color: black;
         text-decoration: none;
     }
@@ -54,6 +29,10 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
         width: 500px;
     }
 
+    .centered {
+        text-align: center;
+    }
+
     .config_form {
         padding: 20px 49px;
         width: 400px;
@@ -63,6 +42,23 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
         border-style: double;
         border-radius: 4px;
         padding: 10px;
+    }
+
+    form {
+        display: table;
+        padding: 20px 50px;
+    }
+
+    form p {
+        display: table-row;
+        line-height: 2em;
+    }
+
+    .header {
+        text-align: center;
+        font-size: 24pt;
+        font-weight: bold;
+        margin-top: 4px;
     }
 
     input {
@@ -88,33 +84,11 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
         width: 5em;
     }
 
-    .centered {
-        text-align: center;
-    }
-
-    form {
-        display: table;
-        padding: 20px 50px;
-    }
-
-    form p {
-        display: table-row;
-        line-height: 2em;
-    }
-
     label {
         display: table-cell;
         text-align: right;
         width: 40%;
     }
-
-    .header {
-        text-align: center;
-        font-size: 24pt;
-        font-weight: bold;
-        margin-top: 4px;
-    }
-
 </style>
 <script>
 
@@ -150,12 +124,10 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
     }
 
     function set_config() {
-        // get the form data
         let ssid = document.getElementById("ssid_input").value
         let secret = document.getElementById("secret_input").value
         let tcp_port = document.getElementById("tcp_port_input").value
         let web_port = document.getElementById("web_port_input").value
-        // validate the form data
         if (ssid.length < 1 || ssid.length > 64) {
             alert("Invalid SSID!");
             return;
@@ -174,7 +146,6 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
             alert("Invalid Web Port");
             return;
         }
-        // construct a new JSON string to send to the host
         let config = {};
         config.SSID = ssid;
         config.secret = secret;
@@ -200,7 +171,6 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
     function process_set_config_response(message) {
         //alert(message);
     }
-
 
     function restart() {
         let xmlHttp = new XMLHttpRequest();
@@ -251,14 +221,17 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
         </form>
         <div class="centered">
             <p>
-                <input type="button" id="cancel_button" value="Cancel" title="Back to Rotator Control" onclick="cancel_page()"/>
-                <input type="button" id="reset_button" value="Reset" title="Reload Configuration" onclick="get_config()"/>
-                <input type="button" id="reset_button" value="Restart" title="Restart Controller to use new setup" onclick="restart()"/>
+                <input type="button" id="cancel_button" value="Cancel" title="Back to Rotator Control"
+                       onclick="cancel_page()"/>
+                <input type="button" id="reset_button" value="Reset" title="Reload Configuration"
+                       onclick="get_config()"/>
+                <input type="button" id="reset_button" value="Restart" title="Restart Controller to use new setup"
+                       onclick="restart()"/>
                 <input type="button" id="apply_button" value="Apply" title="Save Configuration" onclick="set_config()"/>
             </p>
         </div>
     </div>
 </div>
-<div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20220824</div>
+<div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20220826</div>
 </body>
 </html>

@@ -1,30 +1,6 @@
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/html" lang="en">
-<!--
-
-Web Rotator Controller for Raspberry Pi Pico W
-
-Copyright 2022, J. B. Otterson N1KDO.
-
-Redistribution and use in source and binary forms, with or without modification,
-are permitted provided that the following conditions are met:
-  1. Redistributions of source code must retain the above copyright notice,
-     this list of conditions and the following disclaimer.
-  2. Redistributions in binary form must reproduce the above copyright notice,
-     this list of conditions and the following disclaimer in the documentation
-     and/or other materials provided with the distribution.
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
-IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
-INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
-BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
-OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
-OF THE POSSIBILITY OF SUCH DAMAGE.
-
--->
+<!-- Copyright 2022, J. B. Otterson N1KDO. -->
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=0.8, minimum-scale=0.5, maximum-scale=2.0">
     <title>Web Rotator Control</title>
@@ -33,7 +9,6 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
     .author {
         font-size: 8pt;
         font-weight: bold;
-        color: black;
         text-align: right;
         position: absolute;
         top: 340px;
@@ -42,21 +17,6 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 
     .author a:link, .author a:visited, .author a:hover {
         color: black;
-        text-decoration: none;
-    }
-
-    .setup {
-        font-size: 8pt;
-        font-weight: bold;
-        color: black;
-        text-align: left;
-        position: absolute;
-        top: 340px;
-        width: 2px;
-    }
-
-    .setup a:link, .setup a:visited, .setup a:hover {
-        color: blue;
         text-decoration: none;
     }
 
@@ -93,6 +53,12 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
         border-bottom: 24px;
     }
 
+    /* ensures the increment/decrement arrows always display */
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button {
+        opacity: 1;
+    }
+
     .left_column {
         float: left;
         text-align: center;
@@ -114,8 +80,6 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 
     #readout {
         position: absolute;
-        Zmargin: auto;
-        Ztext-align: left;
         top: 30px;
     }
 
@@ -149,12 +113,6 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
         width: 3em;
     }
 
-    /* ensures the increment/decrement arrows always display */
-    input[type=number]::-webkit-inner-spin-button,
-    input[type=number]::-webkit-outer-spin-button {
-        opacity: 1;
-    }
-
     .rotate_button {
         background: transparent;
         border: none;
@@ -168,6 +126,21 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 
     .rotate_button:hover {
         color: red;
+    }
+
+    .setup {
+        font-size: 8pt;
+        font-weight: bold;
+        color: black;
+        text-align: left;
+        position: absolute;
+        top: 340px;
+        width: 2px;
+    }
+
+    .setup a:link, .setup a:visited, .setup a:hover {
+        color: blue;
+        text-decoration: none;
     }
 
     #turn_button {
@@ -308,7 +281,7 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 <div class="header">Web Rotator Controller</div>
 <div class="row">
     <div class="left_column">
-        <img class="compassbg" src="/compass-background.png" width=200" height="200" />
+        <img class="compassbg" src="/compass-background.png" width=200" height="200"/>
         <div id="readout">
             <svg id="dial">
                 <circle id="q1" cx="150" cy="150" r="100" fill="none" stroke-width="8px" stroke="#4ad"></circle>
@@ -351,7 +324,7 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
             <input type="radio" name="refresh_radio" id="refresh_radio_60" value="60" onclick="set_refresh(60)"/>
             <label for="refresh_radio_60">1 minute</label><br>
         </div>
-        <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20220825</div>
+        <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20220826</div>
     </div>
 </div>
 </body>
