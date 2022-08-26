@@ -51,7 +51,6 @@ if upython:
 else:
     ap_mode = False
 
-
 HTTP_STATUS_TEXT = {
     200: 'OK',
     201: 'Created',
@@ -98,7 +97,6 @@ BLINK_PATTERNS = {
     'I': [PERIOD, PERIOD, PERIOD, PERIOD * 3],  # dit dit
     'S': [PERIOD, PERIOD, PERIOD, PERIOD, PERIOD, PERIOD * 3],  # dit dit dit
     'H': [PERIOD, PERIOD, PERIOD, PERIOD, PERIOD, PERIOD, PERIOD, PERIOD * 3],  # dit dit dit dit
-
     'O': [PERIOD * 3, PERIOD, PERIOD * 3, PERIOD, PERIOD * 3, PERIOD * 3],  # dah dah dah
     'N': [PERIOD * 3, PERIOD, PERIOD, PERIOD * 3],  # dah dit
     'D': [PERIOD * 3, PERIOD, PERIOD, PERIOD, PERIOD, PERIOD * 3],  # dah dit dit
@@ -107,6 +105,7 @@ BLINK_PATTERNS = {
 
 blink_code = 'O'
 restart = False
+content_cache = {}
 
 
 def read_config():
@@ -134,20 +133,25 @@ def milliseconds():
     if upython:
         return time.ticks_ms()
     else:
-        return int(time.time()*1000)
+        return int(time.time() * 1000)
 
 
 def read_content(filename):
+    global content_cache
     extension = filename.split('.')[-1]
     content_type = FILE_EXTENSION_TO_CONTENT_TYPE_MAP.get(extension)
-
-    print('extension: {}'.format(extension))
-    try:
-        with open('content/' + filename, 'rb') as content_file:
-            content = content_file.read()
-    except FileNotFoundError:
-        content = None
-        content_type = None
+    if content_type is None:
+        content_type = FILE_EXTENSION_TO_CONTENT_TYPE_MAP.get('*')
+    content = content_cache.get(filename)
+    if content is None:
+        try:
+            with open('content/' + filename, 'rb') as content_file:
+                content = content_file.read()
+                content_cache[filename] = content
+        except Exception as ex:
+            content = None
+            content_type = None
+            # print('some other exception!', type(ex), ex)
     return content, content_type
 
 
@@ -262,7 +266,7 @@ async def serve_serial_client(reader, writer):
     except Exception as ex:
         print('exception in serve_serial_client:', type(ex), ex)
     tc = milliseconds()
-    print('serial client disconnected, elapsed time {:6.3f} seconds'.format((tc - t0)/1000.0))
+    print('serial client disconnected, elapsed time {:6.3f} seconds'.format((tc - t0) / 1000.0))
 
 
 async def serve_http_client(reader, writer):
@@ -291,7 +295,7 @@ async def serve_http_client(reader, writer):
         else:
             query_args = ''
 
-        #print('{} {} {} {}'.format(verb, target, protocol, query_args))
+        # print('{} {} {} {}'.format(verb, target, protocol, query_args))
 
         # HTTP request headers
         request_content_length = 0
@@ -306,7 +310,7 @@ async def serve_http_client(reader, writer):
                 break
             else:
                 # process headers.  look for those we are interested in.
-                #print(header)
+                # print(header)
                 parts = header.decode().strip().split(':', 1)
                 if parts[0] == 'Content-Length':
                     request_content_length = int(parts[1].strip())
@@ -334,7 +338,7 @@ async def serve_http_client(reader, writer):
         elif target == '/rotator/bearing':
             requested_bearing = args.get('set')
             if requested_bearing:
-                #print(requested_bearing)
+                # print(requested_bearing)
                 try:
                     requested_bearing = int(requested_bearing)
                     if 0 <= requested_bearing <= 360:
@@ -367,9 +371,10 @@ async def serve_http_client(reader, writer):
                 web_port_int = safe_int(web_port, -2)
                 ssid = args.get('SSID') or ''
                 secret = args.get('secret') or ''
-                if 0 <= web_port_int <= 65535 and 0 <= tcp_port_int <= 65535 and 0 < len(ssid) <= 64 and len(secret) < 64 and len(args) == 4:
+                if 0 <= web_port_int <= 65535 and 0 <= tcp_port_int <= 65535 and 0 < len(ssid) <= 64 and len(
+                        secret) < 64 and len(args) == 4:
                     config = {'SSID': ssid, 'secret': secret, 'tcp_port': tcp_port, 'web_port': web_port}
-                    #config = json.dumps(args)
+                    # config = json.dumps(args)
                     save_config(config)
                     http_status = 200
                     response = 'ok\r\n'.encode('utf-8')
@@ -401,15 +406,15 @@ async def serve_http_client(reader, writer):
     for header in response_extra_headers:
         rr += '{}\r\n'.format(header)
     rr += '\r\n'
-    response = rr.encode('utf-8') + response
-    writer.write(response)
+    writer.write(rr.encode('utf-8'))  # send headers
+    writer.write(response)  # send content
 
     await writer.drain()
     writer.close()
     await writer.wait_closed()
     tc = milliseconds()
     print('{} {} {}'.format(request, http_status, len(response)))
-    print('web client disconnected, elapsed time {:6.3f} seconds'.format((tc - t0)/1000.0))
+    print('web client disconnected, elapsed time {:6.3f} seconds'.format((tc - t0) / 1000.0))
 
 
 async def main():
@@ -474,5 +479,5 @@ except KeyboardInterrupt as e:
     print('bye')
 finally:
     asyncio.new_event_loop()
-    
+
 print('done')
