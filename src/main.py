@@ -27,19 +27,19 @@ __copyright__ = "Copyright 2022, J. B. Otterson N1KDO."
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import json
+import os
 import sys
+import time
 
 upython = sys.implementation.name == 'micropython'
 
 if upython:
     import network
-    import time
     from machine import Pin
     import uasyncio as asyncio
     from pico_rotator import get_rotator_bearing, set_rotator_bearing
 else:
     import asyncio
-    import time
     from windows_rotator import get_rotator_bearing, set_rotator_bearing
 
 if upython:
@@ -70,15 +70,21 @@ HTTP_STATUS_TEXT = {
     502: 'Bad Gateway',
     503: 'Service Unavailable',
 }
+
+CT_TEXT_TEXT = 'text/text'
+CT_TEXT_HTML = 'text/html'
+CT_APP_JSON = 'application/json'
+CT_APP_WWW_FORM = 'application/x-www-form-urlencoded'
+
 FILE_EXTENSION_TO_CONTENT_TYPE_MAP = {
     'gif': 'image/gif',
-    'html': 'text/html',
+    'html': CT_TEXT_HTML,
     'ico': 'image/vnd.microsoft.icon',
-    'json': 'application/json',
+    'json': CT_APP_JSON,
     'jpeg': 'image/jpeg',
     'jpg': 'image/jpeg',
     'png': 'image/png',
-    'txt': 'text/text',
+    'txt': CT_TEXT_TEXT,
     '*': 'application/octet-stream',
 }
 CONFIG_FILE = 'data/config.json'
@@ -87,22 +93,27 @@ DEFAULT_SECRET = 'North'
 DEFAULT_TCP_PORT = 73
 DEFAULT_WEB_PORT = 80
 
-PERIOD = 0.150
+PERIOD = 0.150  # the speed of the morse code is set by the dit length of 150 ms.
+DIT = PERIOD
+ESP = DIT  # inter-element space
+DAH = 3 * PERIOD
+LSP = DAH  # inter-letter space
+
 """ 
 patterns are list of ON,OFF durations.  Always an even number!
 these are Morse code letters. 
 """
 BLINK_PATTERNS = {
-    'A': [PERIOD, PERIOD, PERIOD * 3, PERIOD * 3],  # dit dah
-    'C': [PERIOD * 3, PERIOD, PERIOD, PERIOD, PERIOD * 3, PERIOD, PERIOD, PERIOD * 3],  # dah dit dah dit
-    'E': [PERIOD, PERIOD * 3],  # dit
-    'I': [PERIOD, PERIOD, PERIOD, PERIOD * 3],  # dit dit
-    'S': [PERIOD, PERIOD, PERIOD, PERIOD, PERIOD, PERIOD * 3],  # dit dit dit
-    'H': [PERIOD, PERIOD, PERIOD, PERIOD, PERIOD, PERIOD, PERIOD, PERIOD * 3],  # dit dit dit dit
-    'O': [PERIOD * 3, PERIOD, PERIOD * 3, PERIOD, PERIOD * 3, PERIOD * 3],  # dah dah dah
-    'N': [PERIOD * 3, PERIOD, PERIOD, PERIOD * 3],  # dah dit
-    'D': [PERIOD * 3, PERIOD, PERIOD, PERIOD, PERIOD, PERIOD * 3],  # dah dit dit
-    'B': [PERIOD * 3, PERIOD, PERIOD, PERIOD, PERIOD, PERIOD, PERIOD, PERIOD * 3],  # dah dit dit dit
+    'A': [DIT, ESP, DAH, LSP],  # dit dah
+    'C': [DAH, ESP, DIT, ESP, DAH, ESP, DIT, LSP],  # dah dit dah dit
+    'E': [DIT, LSP],  # dit
+    'I': [DIT, ESP, DIT, LSP],  # dit dit
+    'S': [DIT, ESP, DIT, ESP, DIT, LSP],  # dit dit dit
+    'H': [DIT, ESP, DIT, ESP, DIT, ESP, DIT, LSP],  # dit dit dit dit
+    'O': [DAH, ESP, DAH, ESP, DAH, LSP],  # dah dah dah
+    'N': [DAH, ESP, DIT, LSP],  # dah dit
+    'D': [DAH, ESP, DIT, ESP, DIT, LSP],  # dah dit dit
+    'B': [DAH, ESP, DIT, ESP, DIT, ESP, DIT, LSP],  # dah dit dit dit
 }
 
 blink_code = 'O'
@@ -128,7 +139,8 @@ def save_config(config):
 def safe_int(s, default=-1):
     if type(s) == int:
         return s
-    return int(s) if s.isdigit() else default
+    else:
+        return int(s) if s.isdigit() else default
 
 
 def milliseconds():
@@ -138,23 +150,55 @@ def milliseconds():
         return int(time.time() * 1000)
 
 
-def read_content(filename):
-    global content_cache
-    extension = filename.split('.')[-1]
-    content_type = FILE_EXTENSION_TO_CONTENT_TYPE_MAP.get(extension)
-    if content_type is None:
-        content_type = FILE_EXTENSION_TO_CONTENT_TYPE_MAP.get('*')
-    content = content_cache.get(filename)
-    if content is None:
+def serve_content(writer, filename):
+    BUFFER_SIZE = 4096
+    filename = 'content/' + filename
+    try:
+        content_length = safe_int(os.stat(filename)[6], -1)
+    except Exception as stat_exception:
+        content_length = -1
+    if content_length < 0:
+        response = b'<html><body><p>that which you seek is not here.</p></body></html>'
+        http_status = 404
+        return send_simple_response(writer, http_status, CT_TEXT_HTML, response), http_status
+    else:
+        extension = filename.split('.')[-1]
+        content_type = FILE_EXTENSION_TO_CONTENT_TYPE_MAP.get(extension)
+        if content_type is None:
+            content_type = FILE_EXTENSION_TO_CONTENT_TYPE_MAP.get('*')
+        http_status = 200
+        start_response(writer, 200, content_type, content_length)
         try:
-            with open('content/' + filename, 'rb') as content_file:
-                content = content_file.read()
-                content_cache[filename] = content
-        except Exception as ex:
-            content = None
-            content_type = None
-            # print('some other exception!', type(ex), ex)
-    return content, content_type
+            with open(filename, 'rb', BUFFER_SIZE) as infile:
+                while True:
+                    buffer = infile.read(BUFFER_SIZE)
+                    writer.write(buffer)
+                    if len(buffer) < BUFFER_SIZE:
+                        break
+        except Exception as e:
+            print(type(e), e)
+        return content_length, http_status
+
+
+def start_response(writer, http_status=200, response_content_type=None, response_size=0, response_extra_headers=[]):
+    status_text = HTTP_STATUS_TEXT.get(http_status) or 'Confused'
+    protocol = 'HTTP/1.0'
+    writer.write('{} {} {}\r\n'.format(protocol, http_status, status_text).encode('utf-8'))
+    if response_content_type is not None and len(response_content_type) > 0:
+        writer.write('Content-type: {}; charset=UTF-8\r\n'.format(response_content_type).encode('utf-8'))
+    if response_size > 0:
+        writer.write('Content-length: {}\r\n'.format(response_size).encode('utf-8'))
+    for header in response_extra_headers:
+        writer.write('{}\r\n'.format(header).encode('utf-8'))
+    writer.write(b'\r\n')
+
+
+def send_simple_response(writer, http_status=200, response_content_type=None, response=None, response_extra_headers=[]):
+    content_length = len(response) if response else 0
+    start_response(writer, http_status, response_content_type, content_length, response_extra_headers)
+    if response is not None and len(response) > 0:
+        writer.write(response)
+    return content_length
 
 
 def connect_to_network(ssid, secret, access_point_mode=False):
@@ -231,7 +275,8 @@ async def serve_serial_client(reader, writer):
     """
     requested = -1
     t0 = milliseconds()
-    print('\nserial client connected')
+    partner = writer.get_extra_info('peername')[0]
+    print('\nserial client connected from {}'.format(partner))
     buffer = []
 
     try:
@@ -274,30 +319,28 @@ async def serve_serial_client(reader, writer):
 async def serve_http_client(reader, writer):
     global restart
     t0 = milliseconds()
-    response = b'<html><body>500 Bad Request</body></html>'
-    http_status = 500
-    response_content_type = 'text/html'
-    response_extra_headers = []
-    print('\nweb client connected')
+    http_status = 418  # can only make tea, sorry.
+    partner = writer.get_extra_info('peername')[0]
+    print('\nweb client connected from {}'.format(partner))
     request_line = await reader.readline()
     request = request_line.decode().strip()
     print(request)
     pieces = request.split(' ')
     if len(pieces) != 3:  # does the http request line look approximately correct?
         http_status = 400
-        response = b'<html><body><p>Bad Request</p></body></html>'
+        response = b'<html><body><p>400 Bad Request</p></body></html>'
+        bytes_sent = send_simple_response(writer, http_status, CT_TEXT_HTML, response);
     else:
         verb = pieces[0]
         target = pieces[1]
         protocol = pieces[2]
+        # should validate protocol here...
         if '?' in target:
             pieces = target.split('?')
             target = pieces[0]
             query_args = pieces[1]
         else:
             query_args = ''
-
-        # print('{} {} {} {}'.format(verb, target, protocol, query_args))
 
         # HTTP request headers
         request_content_length = 0
@@ -326,9 +369,9 @@ async def serve_http_client(reader, writer):
         if verb == 'POST':
             if request_content_length > 0:
                 data = await reader.read(request_content_length)
-                if request_content_type == 'application/x-www-form-urlencoded':
+                if request_content_type == CT_APP_WWW_FORM:
                     args = unpack_args(data.decode())
-                elif request_content_type == 'application/json':
+                elif request_content_type == CT_APP_JSON:
                     args = json.loads(data.decode())
                 else:
                     print('warning: unhandled content_type {}'.format(request_content_type))
@@ -336,11 +379,10 @@ async def serve_http_client(reader, writer):
 
         if target == '/':
             http_status = 301
-            response_extra_headers.append('Location: /rotator.html')
+            bytes_sent = send_simple_response(writer, http_status, None, None, ['Location: /rotator.html'])
         elif target == '/rotator/bearing':
             requested_bearing = args.get('set')
             if requested_bearing:
-                # print(requested_bearing)
                 try:
                     requested_bearing = int(requested_bearing)
                     if 0 <= requested_bearing <= 360:
@@ -348,24 +390,27 @@ async def serve_http_client(reader, writer):
                         result = set_rotator_bearing(requested_bearing)
                         http_status = 200
                         response = '{}\r\n'.format(result).encode('utf-8')
+                        bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
                     else:
                         http_status = 400
                         response = 'parameter out of range\r\n'.encode('utf-8')
+                        bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
                 except Exception as ex:
                     http_status = 500
                     response = 'uh oh: {}'.format(ex).encode('utf-8')
+                    bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
             else:
                 current_bearing = get_rotator_bearing()
-                response = '{}\r\n'.format(current_bearing).encode('utf-8')
                 http_status = 200
-            response_content_type = 'text/text'
+                response = '{}\r\n'.format(current_bearing).encode('utf-8')
+                bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
         elif target == '/config':
             if verb == 'GET':
                 payload = read_config()
                 # payload.pop('secret')  # do not return the secret
                 response = json.dumps(payload).encode('utf-8')
-                response_content_type = 'application/json'
                 http_status = 200
+                bytes_sent = send_simple_response(writer, http_status, CT_APP_JSON, response)
             elif verb == 'POST':
                 tcp_port = args.get('tcp_port') or '-1'
                 web_port = args.get('web_port') or '-1'
@@ -378,45 +423,28 @@ async def serve_http_client(reader, writer):
                     config = {'SSID': ssid, 'secret': secret, 'tcp_port': tcp_port, 'web_port': web_port}
                     # config = json.dumps(args)
                     save_config(config)
-                    http_status = 200
                     response = 'ok\r\n'.encode('utf-8')
-                    response_content_type = 'text/text'
+                    http_status = 200
+                    bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
                 else:
                     response = 'parameter out of range\r\n'.encode('utf-8')
                     http_status = 400
-                    response_content_type = 'text/text'
+                    bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
         elif target == '/restart' and upython:
             restart = True
-            http_status = 200
             response = 'ok\r\n'.encode('utf-8')
-            response_content_type = 'text/text'
+            http_status = 200
+            bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
         else:
             content_file = target[1:] if target[0] == '/' else target
-            response, response_content_type = read_content(content_file)
-            if response is None:
-                http_status = 404
-                response = b'<html><body><p>that which you seek is not here.</p></body></html>'
-            else:
-                http_status = 200
-
-    status_text = HTTP_STATUS_TEXT.get(http_status) or 'Confused'
-    rr = '{} {} {}\r\n'.format(protocol, http_status, status_text)
-    if response_content_type is not None and len(response_content_type) > 0:
-        rr += 'Content-type: {}; charset=UTF-8\r\n'.format(response_content_type)
-    if len(response) > 0:
-        rr += 'Content-length: {}\r\n'.format(len(response))
-    for header in response_extra_headers:
-        rr += '{}\r\n'.format(header)
-    rr += '\r\n'
-    writer.write(rr.encode('utf-8'))  # send headers
-    writer.write(response)  # send content
+            bytes_sent, http_status = serve_content(writer, content_file)
 
     await writer.drain()
     writer.close()
     await writer.wait_closed()
     tc = milliseconds()
-    print('{} {} {}'.format(request, http_status, len(response)))
-    print('web client disconnected, elapsed time {:6.3f} seconds'.format((tc - t0) / 1000.0))
+    print('{} {} {}'.format(request, http_status, bytes_sent))
+    print('web client disconnected, elapsed time {} ms'.format(tc - t0))
 
 
 async def main():
