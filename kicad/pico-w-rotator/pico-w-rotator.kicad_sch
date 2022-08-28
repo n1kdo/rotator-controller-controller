@@ -3505,22 +3505,6 @@
     )
   )
 
-  (symbol (lib_id "Connector:TestPoint") (at 83.82 58.42 90) (unit 1)
-    (in_bom yes) (on_board yes)
-    (uuid 80fe2e45-744a-45a1-be79-ff4a1c6cb9ff)
-    (property "Reference" "TP7" (id 0) (at 77.47 58.42 90))
-    (property "Value" "TestPoint" (id 1) (at 80.518 56.6221 90)
-      (effects (font (size 1.27 1.27)) hide)
-    )
-    (property "Footprint" "TestPoint:TestPoint_THTPad_D1.0mm_Drill0.5mm" (id 2) (at 83.82 53.34 0)
-      (effects (font (size 1.27 1.27)) hide)
-    )
-    (property "Datasheet" "~" (id 3) (at 83.82 53.34 0)
-      (effects (font (size 1.27 1.27)) hide)
-    )
-    (pin "1" (uuid 490a20b7-e4bf-42fd-afaa-c3fdfcefaa9c))
-  )
-
   (symbol (lib_id "Connector:TestPoint") (at 119.38 78.74 270) (unit 1)
     (in_bom yes) (on_board yes) (fields_autoplaced)
     (uuid 82b09b2a-ff75-4220-be95-89c10ac34fb2)
@@ -5475,9 +5459,6 @@
     )
     (path "/06a20606-9a65-413f-ad5e-9e72e05d921a"
       (reference "TP6") (unit 1) (value "TestPoint") (footprint "TestPoint:TestPoint_THTPad_D1.0mm_Drill0.5mm")
-    )
-    (path "/80fe2e45-744a-45a1-be79-ff4a1c6cb9ff"
-      (reference "TP7") (unit 1) (value "TestPoint") (footprint "TestPoint:TestPoint_THTPad_D1.0mm_Drill0.5mm")
     )
     (path "/bbd15443-3b01-4f95-b94b-2795f7576bd6"
       (reference "TP8") (unit 1) (value "TestPoint") (footprint "TestPoint:TestPoint_THTPad_D1.0mm_Drill0.5mm")
