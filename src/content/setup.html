@@ -107,7 +107,7 @@
                 process_get_config_response(xmlHttp.responseText);
             }
         }
-        xmlHttp.open("GET", "/config", true);
+        xmlHttp.open("GET", "/api/config", true);
         xmlHttp.send();
     }
 
@@ -163,7 +163,7 @@
                 process_set_config_response(xmlHttp.responseText);
             }
         }
-        xmlHttp.open("POST", "/config", true);
+        xmlHttp.open("POST", "/api/config", true);
         xmlHttp.setRequestHeader("Content-Type", "application/json");
         xmlHttp.send(payload);
     }
@@ -183,12 +183,12 @@
                 process_restart_response(xmlHttp.responseText);
             }
         }
-        xmlHttp.open("GET", "/restart", true);
+        xmlHttp.open("GET", "/api/restart", true);
         xmlHttp.send();
     }
 
     function process_restart_response(message) {
-        alert('Device will now restart...');
+        alert("Device will now restart...");
         cancel_page();
     }
 
@@ -232,6 +232,6 @@
         </div>
     </div>
 </div>
-<div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20220826</div>
+<div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20220905</div>
 </body>
 </html>

@@ -243,7 +243,7 @@
                 process_get_bearing_response(xmlHttp.responseText);
             }
         }
-        xmlHttp.open("GET", "/rotator/bearing", true);
+        xmlHttp.open("GET", "/api/bearing", true);
         xmlHttp.send();
     }
 
@@ -260,7 +260,7 @@
             }
         }
         let payload = "set=" + requested;
-        xmlHttp.open("POST", "/rotator/bearing", true);
+        xmlHttp.open("POST", "/api/bearing", true);
         xmlHttp.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
         xmlHttp.send(payload);
     }
@@ -324,7 +324,7 @@
             <input type="radio" name="refresh_radio" id="refresh_radio_60" value="60" onclick="set_refresh(60)"/>
             <label for="refresh_radio_60">1 minute</label><br>
         </div>
-        <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20220826</div>
+        <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20220905</div>
     </div>
 </div>
 </body>

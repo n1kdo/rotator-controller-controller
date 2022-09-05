@@ -3,6 +3,7 @@
 #
 __author__ = 'J. B. Otterson'
 __copyright__ = "Copyright 2022, J. B. Otterson N1KDO."
+
 #
 # Copyright 2022, J. B. Otterson N1KDO.
 #
@@ -28,6 +29,7 @@ __copyright__ = "Copyright 2022, J. B. Otterson N1KDO."
 
 import json
 import os
+import re
 import sys
 import time
 
@@ -44,15 +46,42 @@ else:
 
 if upython:
     onboard = Pin('LED', Pin.OUT, value=0)
-    onboard.on()
     blinky = Pin(2, Pin.OUT, value=0)  # blinky external LED
     button = Pin(3, Pin.IN, Pin.PULL_UP)
     ap_mode = button.value() == 0
-    print('read button as {}'.format(button.value()))
-    print('ap_mode={}'.format(ap_mode))
 else:
     ap_mode = False
 
+
+BUFFER_SIZE = 4096
+CONFIG_FILE = 'data/config.json'
+CONTENT_DIR = 'content/'
+CT_TEXT_TEXT = 'text/text'
+CT_TEXT_HTML = 'text/html'
+CT_APP_JSON = 'application/json'
+CT_APP_WWW_FORM = 'application/x-www-form-urlencoded'
+CT_MULTIPART_FORM = 'multipart/form-data'
+DANGER_ZONE_FILE_NAMES = [
+    'config.html',
+    'files.html',
+    'rotator.html',
+]
+DEFAULT_SECRET = 'North'
+DEFAULT_SSID = 'Rotator'
+DEFAULT_TCP_PORT = 73
+DEFAULT_WEB_PORT = 80
+FILE_EXTENSION_TO_CONTENT_TYPE_MAP = {
+    'gif': 'image/gif',
+    'html': CT_TEXT_HTML,
+    'ico': 'image/vnd.microsoft.icon',
+    'json': CT_APP_JSON,
+    'jpeg': 'image/jpeg',
+    'jpg': 'image/jpeg',
+    'png': 'image/png',
+    'txt': CT_TEXT_TEXT,
+    '*': 'application/octet-stream',
+}
+HYPHENS = '--'
 HTTP_STATUS_TEXT = {
     200: 'OK',
     201: 'Created',
@@ -70,55 +99,30 @@ HTTP_STATUS_TEXT = {
     502: 'Bad Gateway',
     503: 'Service Unavailable',
 }
-
-CT_TEXT_TEXT = 'text/text'
-CT_TEXT_HTML = 'text/html'
-CT_APP_JSON = 'application/json'
-CT_APP_WWW_FORM = 'application/x-www-form-urlencoded'
-
-FILE_EXTENSION_TO_CONTENT_TYPE_MAP = {
-    'gif': 'image/gif',
-    'html': CT_TEXT_HTML,
-    'ico': 'image/vnd.microsoft.icon',
-    'json': CT_APP_JSON,
-    'jpeg': 'image/jpeg',
-    'jpg': 'image/jpeg',
-    'png': 'image/png',
-    'txt': CT_TEXT_TEXT,
-    '*': 'application/octet-stream',
+MORSE_PERIOD = 0.150  # the speed of the morse code is set by the dit length of 150 ms.
+MORSE_DIT = MORSE_PERIOD
+MORSE_ESP = MORSE_DIT  # inter-element space
+MORSE_DAH = 3 * MORSE_PERIOD
+MORSE_LSP = MORSE_DAH  # inter-letter space
+MORSE_PATTERNS = {
+    'A': [MORSE_DIT, MORSE_ESP, MORSE_DAH, MORSE_LSP],  # dit dah
+    'C': [MORSE_DAH, MORSE_ESP, MORSE_DIT, MORSE_ESP, MORSE_DAH, MORSE_ESP, MORSE_DIT, MORSE_LSP],  # dah dit dah dit
+    'E': [MORSE_DIT, MORSE_LSP],  # dit
+    'I': [MORSE_DIT, MORSE_ESP, MORSE_DIT, MORSE_LSP],  # dit dit
+    'S': [MORSE_DIT, MORSE_ESP, MORSE_DIT, MORSE_ESP, MORSE_DIT, MORSE_LSP],  # dit dit dit
+    'H': [MORSE_DIT, MORSE_ESP, MORSE_DIT, MORSE_ESP, MORSE_DIT, MORSE_ESP, MORSE_DIT, MORSE_LSP],  # dit dit dit dit
+    'O': [MORSE_DAH, MORSE_ESP, MORSE_DAH, MORSE_ESP, MORSE_DAH, MORSE_LSP],  # dah dah dah
+    'N': [MORSE_DAH, MORSE_ESP, MORSE_DIT, MORSE_LSP],  # dah dit
+    'D': [MORSE_DAH, MORSE_ESP, MORSE_DIT, MORSE_ESP, MORSE_DIT, MORSE_LSP],  # dah dit dit
+    'B': [MORSE_DAH, MORSE_ESP, MORSE_DIT, MORSE_ESP, MORSE_DIT, MORSE_ESP, MORSE_DIT, MORSE_LSP],  # dah dit dit dit
 }
-CONFIG_FILE = 'data/config.json'
-DEFAULT_SSID = 'Rotator'
-DEFAULT_SECRET = 'North'
-DEFAULT_TCP_PORT = 73
-DEFAULT_WEB_PORT = 80
-
-PERIOD = 0.150  # the speed of the morse code is set by the dit length of 150 ms.
-DIT = PERIOD
-ESP = DIT  # inter-element space
-DAH = 3 * PERIOD
-LSP = DAH  # inter-letter space
-
-""" 
-patterns are list of ON,OFF durations.  Always an even number!
-these are Morse code letters. 
-"""
-BLINK_PATTERNS = {
-    'A': [DIT, ESP, DAH, LSP],  # dit dah
-    'C': [DAH, ESP, DIT, ESP, DAH, ESP, DIT, LSP],  # dah dit dah dit
-    'E': [DIT, LSP],  # dit
-    'I': [DIT, ESP, DIT, LSP],  # dit dit
-    'S': [DIT, ESP, DIT, ESP, DIT, LSP],  # dit dit dit
-    'H': [DIT, ESP, DIT, ESP, DIT, ESP, DIT, LSP],  # dit dit dit dit
-    'O': [DAH, ESP, DAH, ESP, DAH, LSP],  # dah dah dah
-    'N': [DAH, ESP, DIT, LSP],  # dah dit
-    'D': [DAH, ESP, DIT, ESP, DIT, LSP],  # dah dit dit
-    'B': [DAH, ESP, DIT, ESP, DIT, ESP, DIT, LSP],  # dah dit dit dit
-}
+MP_START_BOUND = 1
+MP_HEADERS = 2
+MP_DATA = 3
+MP_END_BOUND = 4
 
 blink_code = 'O'
 restart = False
-content_cache = {}
 
 
 def read_config():
@@ -150,15 +154,28 @@ def milliseconds():
         return int(time.time() * 1000)
 
 
+def valid_upload(filename):
+    if filename is None:
+        return False
+    match = re.match('^[a-zA-Z0-9](?:[a-zA-Z0-9._-]*[a-zA-Z0-9])?.[a-zA-Z0-9_-]+$', filename)
+    if match is None:
+        return False
+    if match.group(0) != filename:
+        return False
+    extension = filename.split('.')[-1].lower()
+    if FILE_EXTENSION_TO_CONTENT_TYPE_MAP.get(extension) is None:
+        return False
+    return True
+
+
 def serve_content(writer, filename):
-    BUFFER_SIZE = 4096
-    filename = 'content/' + filename
+    filename = CONTENT_DIR + filename
     try:
         content_length = safe_int(os.stat(filename)[6], -1)
-    except Exception as stat_exception:
+    except OSError:
         content_length = -1
     if content_length < 0:
-        response = b'<html><body><p>that which you seek is not here.</p></body></html>'
+        response = b'<html><body><p>404.  Means &quot;no got&quot;.</p></body></html>'
         http_status = 404
         return send_simple_response(writer, http_status, CT_TEXT_HTML, response), http_status
     else:
@@ -180,22 +197,23 @@ def serve_content(writer, filename):
         return content_length, http_status
 
 
-def start_response(writer, http_status=200, response_content_type=None, response_size=0, response_extra_headers=[]):
+def start_response(writer, http_status=200, content_type=None, response_size=0, extra_headers=None):
     status_text = HTTP_STATUS_TEXT.get(http_status) or 'Confused'
     protocol = 'HTTP/1.0'
     writer.write('{} {} {}\r\n'.format(protocol, http_status, status_text).encode('utf-8'))
-    if response_content_type is not None and len(response_content_type) > 0:
-        writer.write('Content-type: {}; charset=UTF-8\r\n'.format(response_content_type).encode('utf-8'))
+    if content_type is not None and len(content_type) > 0:
+        writer.write('Content-type: {}; charset=UTF-8\r\n'.format(content_type).encode('utf-8'))
     if response_size > 0:
         writer.write('Content-length: {}\r\n'.format(response_size).encode('utf-8'))
-    for header in response_extra_headers:
-        writer.write('{}\r\n'.format(header).encode('utf-8'))
+    if extra_headers is not None:
+        for header in extra_headers:
+            writer.write('{}\r\n'.format(header).encode('utf-8'))
     writer.write(b'\r\n')
 
 
-def send_simple_response(writer, http_status=200, response_content_type=None, response=None, response_extra_headers=[]):
+def send_simple_response(writer, http_status=200, content_type=None, response=None, extra_headers=None):
     content_length = len(response) if response else 0
-    start_response(writer, http_status, response_content_type, content_length, response_extra_headers)
+    start_response(writer, http_status, content_type, content_length, extra_headers)
     if response is not None and len(response) > 0:
         writer.write(response)
     return content_length
@@ -219,13 +237,12 @@ def connect_to_network(ssid, secret, access_point_mode=False):
         if len(secret) == 0:
             security = 0
         else:
-            security = 0x00400004
+            security = 0x00400004  # CYW43_AUTH_WPA2_AES_PSK
         wlan.config(ssid=ssid, key=secret, security=security)
         wlan.active(True)
         print(wlan.active())
         print('ssid={}'.format(wlan.config('ssid')))
         blink_code = 'A'
-
     else:
         print('Connecting to WLAN...')
         blink_code = 'C'  # for connection
@@ -244,7 +261,6 @@ def connect_to_network(ssid, secret, access_point_mode=False):
         if wlan.status() != network.STAT_GOT_IP:
             raise RuntimeError('Network connection failed')
         blink_code = 'O'
-
     onboard.off()
     status = wlan.ifconfig()
     ip_address = status[0]
@@ -266,7 +282,7 @@ def unpack_args(s):
 async def serve_serial_client(reader, writer):
     """
     this provides serial compatible control.
-    use com0com with com2tcp to interface legacy apps on windows.
+    use com0com with com2tcp to interface legacy apps on Windows.
 
     this code provides a serial endpoint that implements part of the DCU-3 protocol.
 
@@ -320,6 +336,7 @@ async def serve_http_client(reader, writer):
     global restart
     t0 = milliseconds()
     http_status = 418  # can only make tea, sorry.
+    bytes_sent = 0
     partner = writer.get_extra_info('peername')[0]
     print('\nweb client connected from {}'.format(partner))
     request_line = await reader.readline()
@@ -329,7 +346,7 @@ async def serve_http_client(reader, writer):
     if len(pieces) != 3:  # does the http request line look approximately correct?
         http_status = 400
         response = b'<html><body><p>400 Bad Request</p></body></html>'
-        bytes_sent = send_simple_response(writer, http_status, CT_TEXT_HTML, response);
+        bytes_sent = send_simple_response(writer, http_status, CT_TEXT_HTML, response)
     else:
         verb = pieces[0]
         target = pieces[1]
@@ -341,109 +358,234 @@ async def serve_http_client(reader, writer):
             query_args = pieces[1]
         else:
             query_args = ''
-
-        # HTTP request headers
-        request_content_length = 0
-        request_content_type = ''
-        while True:
-            header = await reader.readline()
-            if len(header) == 0:
-                # empty header line, eof?
-                break
-            if header == b'\r\n':
-                # blank line at end of headers
-                break
-            else:
-                # process headers.  look for those we are interested in.
-                # print(header)
-                parts = header.decode().strip().split(':', 1)
-                if parts[0] == 'Content-Length':
-                    request_content_length = int(parts[1].strip())
-                elif parts[0] == 'Content-Type':
-                    request_content_type = parts[1].strip()
-
-        args = {}
-        if verb == 'GET':
-            args = unpack_args(query_args)
-
-        if verb == 'POST':
-            if request_content_length > 0:
-                data = await reader.read(request_content_length)
-                if request_content_type == CT_APP_WWW_FORM:
-                    args = unpack_args(data.decode())
-                elif request_content_type == CT_APP_JSON:
-                    args = json.loads(data.decode())
+        if verb not in ['GET', 'POST']:
+            http_status = 400
+            response = b'<html><body><p>only GET and POST are supported</p></body></html>'
+            bytes_sent = send_simple_response(writer, http_status, CT_TEXT_HTML, response)
+        elif protocol not in ['HTTP/1.0', 'HTTP/1.1']:
+            http_status = 400
+            response = '<html><body><p>protocol {} is not supported'.format(protocol).encode('utf-8')
+            bytes_sent = send_simple_response(writer, http_status, CT_TEXT_HTML, response)
+        else:
+            # get HTTP request headers
+            request_content_length = 0
+            request_content_type = ''
+            while True:
+                header = await reader.readline()
+                if len(header) == 0:
+                    # empty header line, eof?
+                    break
+                if header == b'\r\n':
+                    # blank line at end of headers
+                    break
                 else:
-                    print('warning: unhandled content_type {}'.format(request_content_type))
-                    args = data.decode()
+                    # process headers.  look for those we are interested in.
+                    # print(header)
+                    parts = header.decode().strip().split(':', 1)
+                    if parts[0] == 'Content-Length':
+                        request_content_length = int(parts[1].strip())
+                    elif parts[0] == 'Content-Type':
+                        request_content_type = parts[1].strip()
 
-        if target == '/':
-            http_status = 301
-            bytes_sent = send_simple_response(writer, http_status, None, None, ['Location: /rotator.html'])
-        elif target == '/rotator/bearing':
-            requested_bearing = args.get('set')
-            if requested_bearing:
-                try:
-                    requested_bearing = int(requested_bearing)
-                    if 0 <= requested_bearing <= 360:
-                        print('sending rotor command')
-                        result = set_rotator_bearing(requested_bearing)
+            args = {}
+            if verb == 'GET':
+                args = unpack_args(query_args)
+            elif verb == 'POST':
+                if request_content_length > 0:
+                    if request_content_type == CT_APP_WWW_FORM:
+                        data = await reader.read(request_content_length)
+                        args = unpack_args(data.decode())
+                    elif request_content_type == CT_APP_JSON:
+                        data = await reader.read(request_content_length)
+                        args = json.loads(data.decode())
+                    # else:
+                    #    print('warning: unhandled content_type {}'.format(request_content_type))
+                    #    print('request_content_length={}'.format(request_content_length))
+            else:  # bad request
+                http_status = 400
+                response = b'only GET and POST are supported'
+                bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
+
+            if target == '/':
+                http_status = 301
+                bytes_sent = send_simple_response(writer, http_status, None, None, ['Location: /rotator.html'])
+            elif target == '/api/bearing':
+                requested_bearing = args.get('set')
+                if requested_bearing:
+                    try:
+                        requested_bearing = int(requested_bearing)
+                        if 0 <= requested_bearing <= 360:
+                            print('sending rotor command')
+                            result = set_rotator_bearing(requested_bearing)
+                            http_status = 200
+                            response = '{}\r\n'.format(result).encode('utf-8')
+                            bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
+                        else:
+                            http_status = 400
+                            response = 'parameter out of range\r\n'.encode('utf-8')
+                            bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
+                    except Exception as ex:
+                        http_status = 500
+                        response = 'uh oh: {}'.format(ex).encode('utf-8')
+                        bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
+                else:
+                    current_bearing = get_rotator_bearing()
+                    http_status = 200
+                    response = '{}\r\n'.format(current_bearing).encode('utf-8')
+                    bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
+            elif target == '/api/config':
+                if verb == 'GET':
+                    payload = read_config()
+                    # payload.pop('secret')  # do not return the secret
+                    response = json.dumps(payload).encode('utf-8')
+                    http_status = 200
+                    bytes_sent = send_simple_response(writer, http_status, CT_APP_JSON, response)
+                elif verb == 'POST':
+                    tcp_port = args.get('tcp_port') or '-1'
+                    web_port = args.get('web_port') or '-1'
+                    tcp_port_int = safe_int(tcp_port, -2)
+                    web_port_int = safe_int(web_port, -2)
+                    ssid = args.get('SSID') or ''
+                    secret = args.get('secret') or ''
+                    if 0 <= web_port_int <= 65535 and 0 <= tcp_port_int <= 65535 and 0 < len(ssid) <= 64 and len(
+                            secret) < 64 and len(args) == 4:
+                        config = {'SSID': ssid, 'secret': secret, 'tcp_port': tcp_port, 'web_port': web_port}
+                        # config = json.dumps(args)
+                        save_config(config)
+                        response = 'ok\r\n'.encode('utf-8')
                         http_status = 200
-                        response = '{}\r\n'.format(result).encode('utf-8')
                         bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
                     else:
-                        http_status = 400
                         response = 'parameter out of range\r\n'.encode('utf-8')
+                        http_status = 400
                         bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
-                except Exception as ex:
-                    http_status = 500
-                    response = 'uh oh: {}'.format(ex).encode('utf-8')
-                    bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
-            else:
-                current_bearing = get_rotator_bearing()
-                http_status = 200
-                response = '{}\r\n'.format(current_bearing).encode('utf-8')
-                bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
-        elif target == '/config':
-            if verb == 'GET':
-                payload = read_config()
-                # payload.pop('secret')  # do not return the secret
-                response = json.dumps(payload).encode('utf-8')
-                http_status = 200
-                bytes_sent = send_simple_response(writer, http_status, CT_APP_JSON, response)
-            elif verb == 'POST':
-                tcp_port = args.get('tcp_port') or '-1'
-                web_port = args.get('web_port') or '-1'
-                tcp_port_int = safe_int(tcp_port, -2)
-                web_port_int = safe_int(web_port, -2)
-                ssid = args.get('SSID') or ''
-                secret = args.get('secret') or ''
-                if 0 <= web_port_int <= 65535 and 0 <= tcp_port_int <= 65535 and 0 < len(ssid) <= 64 and len(
-                        secret) < 64 and len(args) == 4:
-                    config = {'SSID': ssid, 'secret': secret, 'tcp_port': tcp_port, 'web_port': web_port}
-                    # config = json.dumps(args)
-                    save_config(config)
-                    response = 'ok\r\n'.encode('utf-8')
+            elif target == '/api/get_files':
+                if verb == 'GET':
+                    payload = os.listdir(CONTENT_DIR)
+                    response = json.dumps(payload).encode('utf-8')
                     http_status = 200
+                    bytes_sent = send_simple_response(writer, http_status, CT_APP_JSON, response)
+            elif target == '/api/upload_file':
+                if verb == 'POST':
+                    boundary = None
+                    if ';' in request_content_type:
+                        pieces = request_content_type.split(';')
+                        request_content_type = pieces[0]
+                        boundary = pieces[1].strip()
+                        if boundary.startswith('boundary='):
+                            boundary = boundary[9:]
+                    if request_content_type != CT_MULTIPART_FORM or boundary is None:
+                        response = b'multipart boundary or content type error'
+                        http_status = 400
+                    else:
+                        response = b'unhandled problem'
+                        http_status = 500
+                        remaining_content_length = request_content_length
+                        start_boundary = HYPHENS + boundary
+                        end_boundary = start_boundary + HYPHENS
+                        state = MP_START_BOUND
+                        filename = None
+                        output_file = None
+                        writing_file = False
+                        more_bytes = True
+                        leftover_bytes = []
+                        while more_bytes:
+                            # print('waiting for read')
+                            buffer = await reader.read(BUFFER_SIZE)
+                            # print('read {} bytes of max {}'.format(len(buffer), BUFFER_SIZE))
+                            remaining_content_length -= len(buffer)
+                            # print('remaining content length {}'.format(remaining_content_length))
+                            if remaining_content_length == 0:  # < BUFFER_SIZE:
+                                more_bytes = False
+                            if len(leftover_bytes) != 0:
+                                buffer = leftover_bytes + buffer
+                                leftover_bytes = []
+                            start = 0
+                            while start < len(buffer):
+                                if state == MP_DATA:
+                                    if not output_file:
+                                        output_file = open(CONTENT_DIR + 'uploaded_' + filename, 'wb')
+                                        writing_file = True
+                                    end = len(buffer)
+                                    for i in range(start, len(buffer) - 3):
+                                        if buffer[i] == 13 and buffer[i + 1] == 10 and buffer[i + 2] == 45 and \
+                                                buffer[i + 3] == 45:
+                                            end = i
+                                            writing_file = False
+                                            break
+                                    if end == BUFFER_SIZE:
+                                        if buffer[-1] == 13:
+                                            leftover_bytes = buffer[-1:]
+                                            buffer = buffer[:-1]
+                                            end -= 1
+                                        elif buffer[-2] == 13 and buffer[-1] == 10:
+                                            leftover_bytes = buffer[-2:]
+                                            buffer = buffer[:-2]
+                                            end -= 2
+                                        elif buffer[-3] == 13 and buffer[-2] == 10 and buffer[-1] == 45:
+                                            leftover_bytes = buffer[-3:]
+                                            buffer = buffer[:-3]
+                                            end -= 3
+                                    # print('writing buffer[{}:{}] buffer size={}'.format(start, end, BUFFER_SIZE))
+                                    output_file.write(buffer[start:end])
+                                    if not writing_file:
+                                        # print('closing file')
+                                        state = MP_END_BOUND
+                                        output_file.close()
+                                        output_file = None
+                                        response = 'Uploaded {} successfully'.format(filename).encode('utf-8')
+                                        http_status = 200
+                                    start = end + 2
+                                else:  # must be reading headers or boundary
+                                    line = ''
+                                    for i in range(start, len(buffer) - 1):
+                                        if buffer[i] == 13 and buffer[i + 1] == 10:
+                                            line = buffer[start:i].decode('utf-8')
+                                            start = i + 2
+                                            break
+                                    if state == MP_START_BOUND:
+                                        if line == start_boundary:
+                                            state = MP_HEADERS
+                                        else:
+                                            print('expecting start boundary, got ' + line)
+                                    elif state == MP_HEADERS:
+                                        if len(line) == 0:
+                                            state = MP_DATA
+                                        elif line.startswith('Content-Disposition:'):
+                                            pieces = line.split(';')
+                                            fn = pieces[2].strip()
+                                            if fn.startswith('filename="'):
+                                                filename = fn[10:-1]
+                                                if not valid_upload(filename):
+                                                    response = 'bad filename {}'.format(filename).encode('utf-8')
+                                                    http_status = 500
+                                                    more_bytes = False
+                                                    start = len(buffer)
+                                        # else:
+                                        #     print('processing headers, got ' + line)
+                                    elif state == MP_END_BOUND:
+                                        if line == end_boundary:
+                                            state = MP_START_BOUND
+                                        else:
+                                            print('expecting end boundary, got ' + line)
+                                    else:
+                                        http_status = 500
+                                        response = 'unmanaged state {}'.format(state).encode('utf-8')
                     bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
-                else:
-                    response = 'parameter out of range\r\n'.encode('utf-8')
-                    http_status = 400
-                    bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
-        elif target == '/restart' and upython:
-            restart = True
-            response = 'ok\r\n'.encode('utf-8')
-            http_status = 200
-            bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
-        else:
-            content_file = target[1:] if target[0] == '/' else target
-            bytes_sent, http_status = serve_content(writer, content_file)
+            elif target == '/api/restart' and upython:
+                restart = True
+                response = 'ok\r\n'.encode('utf-8')
+                http_status = 200
+                bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
+            else:
+                content_file = target[1:] if target[0] == '/' else target
+                bytes_sent, http_status = serve_content(writer, content_file)
 
     await writer.drain()
     writer.close()
     await writer.wait_closed()
     tc = milliseconds()
-    print('{} {} {}'.format(request, http_status, bytes_sent))
+    print('{} {} {} {}'.format(partner, request, http_status, bytes_sent))
     print('web client disconnected, elapsed time {} ms'.format(tc - t0))
 
 
@@ -480,8 +622,8 @@ async def main():
 
     while True:
         if upython:
-            blink_pattern = BLINK_PATTERNS.get(blink_code) or [0.50, 0.50]
-            blink_list = [elem for elem in BLINK_PATTERNS[blink_code]]
+            blink_pattern = MORSE_PATTERNS.get(blink_code) or [0.50, 0.50]
+            blink_list = [elem for elem in blink_pattern]
             while len(blink_list) > 0:
                 onboard.on()
                 blinky.on()
@@ -489,7 +631,7 @@ async def main():
                 onboard.off()
                 blinky.off()
                 await asyncio.sleep(blink_list.pop(0))
-            if restart:
+            if restart or (button.value() == 0 and not ap_mode):
                 machine.soft_reset()
         else:
             await asyncio.sleep(1.0)
@@ -505,7 +647,7 @@ async def main():
 print('starting')
 try:
     asyncio.run(main())
-except KeyboardInterrupt as e:
+except KeyboardInterrupt:
     print('bye')
 finally:
     asyncio.new_event_loop()
