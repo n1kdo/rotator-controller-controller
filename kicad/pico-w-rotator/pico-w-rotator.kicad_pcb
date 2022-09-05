@@ -1537,6 +1537,11 @@
       (net 57 "Net-(SW1-Pad2)") (pinfunction "2") (pintype "passive") (tstamp 6710a9e7-13a9-485e-a885-1d52c17d40be))
     (pad "MH1" thru_hole circle locked (at -5.08 5.08 180) (size 1.3 1.3) (drill 0.8) (layers *.Cu *.Mask) (tstamp 6e207c9b-5852-4c3f-8ddd-a4b7f7b1c7b5))
     (pad "MH2" thru_hole circle locked (at 2.54 5.08 180) (size 1.3 1.3) (drill 0.8) (layers *.Cu *.Mask) (tstamp 32e7d620-4611-4f73-bb4f-c0c4bd5fcc51))
+    (model "C:/Users/Jeff/Desktop/raspi pico w/GB215AH-A.stp"
+      (offset (xyz -1.27 -5.08 1.27))
+      (scale (xyz 1 1 1))
+      (rotate (xyz -90 0 0))
+    )
   )
 
   (footprint "TestPoint:TestPoint_THTPad_D1.5mm_Drill0.7mm" (layer "F.Cu")
@@ -3432,6 +3437,11 @@
       (net 53 "unconnected-(U1-Pad42)") (pinfunction "GND") (pintype "power_in+no_connect") (tstamp 240e0352-1f63-45bf-acdf-6d033296ee15))
     (pad "43" thru_hole oval (at 5.6641 5.6 180) (size 1.7 1.7) (drill 1.02) (layers *.Cu *.Mask)
       (net 54 "unconnected-(U1-Pad43)") (pinfunction "SWDIO") (pintype "bidirectional+no_connect") (tstamp 4638168b-f5d2-43b2-8f50-7e77fbc568c6))
+    (model "C:/Users/Jeff/Desktop/raspi pico w/PicoW.stp"
+      (offset (xyz -10.414 -25.4 1.27))
+      (scale (xyz 1 1 1))
+      (rotate (xyz 0 0 0))
+    )
   )
 
   (footprint "TestPoint:TestPoint_THTPad_D1.5mm_Drill0.7mm" (layer "F.Cu")
