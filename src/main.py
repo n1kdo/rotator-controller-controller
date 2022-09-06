@@ -2,7 +2,7 @@
 # main.py -- this is the web server for the Raspberry Pi Pico W Web Rotator Controller.
 #
 __author__ = 'J. B. Otterson'
-__copyright__ = "Copyright 2022, J. B. Otterson N1KDO."
+__copyright__ = 'Copyright 2022, J. B. Otterson N1KDO.'
 
 #
 # Copyright 2022, J. B. Otterson N1KDO.
@@ -27,6 +27,7 @@ __copyright__ = "Copyright 2022, J. B. Otterson N1KDO."
 # OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import gc
 import json
 import os
 import re
@@ -66,7 +67,7 @@ DANGER_ZONE_FILE_NAMES = [
     'files.html',
     'rotator.html',
 ]
-DEFAULT_SECRET = 'North'
+DEFAULT_SECRET = 'NorthSouth'
 DEFAULT_SSID = 'Rotator'
 DEFAULT_TCP_PORT = 73
 DEFAULT_WEB_PORT = 80
@@ -94,6 +95,7 @@ HTTP_STATUS_TEXT = {
     401: 'Unauthorized',
     403: 'Forbidden',
     404: 'Not Found',
+    409: 'Conflict',
     500: 'Internal Server Error',
     501: 'Not Implemented',
     502: 'Bad Gateway',
@@ -105,16 +107,16 @@ MORSE_ESP = MORSE_DIT  # inter-element space
 MORSE_DAH = 3 * MORSE_PERIOD
 MORSE_LSP = MORSE_DAH  # inter-letter space
 MORSE_PATTERNS = {
-    'A': [MORSE_DIT, MORSE_ESP, MORSE_DAH, MORSE_LSP],  # dit dah
-    'C': [MORSE_DAH, MORSE_ESP, MORSE_DIT, MORSE_ESP, MORSE_DAH, MORSE_ESP, MORSE_DIT, MORSE_LSP],  # dah dit dah dit
-    'E': [MORSE_DIT, MORSE_LSP],  # dit
-    'I': [MORSE_DIT, MORSE_ESP, MORSE_DIT, MORSE_LSP],  # dit dit
-    'S': [MORSE_DIT, MORSE_ESP, MORSE_DIT, MORSE_ESP, MORSE_DIT, MORSE_LSP],  # dit dit dit
-    'H': [MORSE_DIT, MORSE_ESP, MORSE_DIT, MORSE_ESP, MORSE_DIT, MORSE_ESP, MORSE_DIT, MORSE_LSP],  # dit dit dit dit
-    'O': [MORSE_DAH, MORSE_ESP, MORSE_DAH, MORSE_ESP, MORSE_DAH, MORSE_LSP],  # dah dah dah
-    'N': [MORSE_DAH, MORSE_ESP, MORSE_DIT, MORSE_LSP],  # dah dit
-    'D': [MORSE_DAH, MORSE_ESP, MORSE_DIT, MORSE_ESP, MORSE_DIT, MORSE_LSP],  # dah dit dit
-    'B': [MORSE_DAH, MORSE_ESP, MORSE_DIT, MORSE_ESP, MORSE_DIT, MORSE_ESP, MORSE_DIT, MORSE_LSP],  # dah dit dit dit
+    'A': [MORSE_DIT, MORSE_DAH],
+    'C': [MORSE_DAH, MORSE_DIT, MORSE_DAH, MORSE_DIT],
+    'E': [MORSE_DIT],
+    'I': [MORSE_DIT, MORSE_DIT],
+    'S': [MORSE_DIT, MORSE_DIT, MORSE_DIT],
+    'H': [MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DIT],
+    'O': [MORSE_DAH, MORSE_DAH, MORSE_DAH],
+    'N': [MORSE_DAH, MORSE_DIT],
+    'D': [MORSE_DAH, MORSE_DIT, MORSE_DIT],
+    'B': [MORSE_DAH, MORSE_DIT, MORSE_DIT, MORSE_DIT],
 }
 MP_START_BOUND = 1
 MP_HEADERS = 2
@@ -154,7 +156,7 @@ def milliseconds():
         return int(time.time() * 1000)
 
 
-def valid_upload(filename):
+def valid_filename(filename):
     if filename is None:
         return False
     match = re.match('^[a-zA-Z0-9](?:[a-zA-Z0-9._-]*[a-zA-Z0-9])?.[a-zA-Z0-9_-]+$', filename)
@@ -233,7 +235,7 @@ def connect_to_network(ssid, secret, access_point_mode=False):
         #define CYW43_AUTH_WPA2_MIXED_PSK (0x00400006)  ///< WPA2/WPA mixed authorisation
         """
         ssid = DEFAULT_SSID
-        secret = ''
+        secret = DEFAULT_SECRET
         if len(secret) == 0:
             security = 0
         else:
@@ -345,7 +347,7 @@ async def serve_http_client(reader, writer):
     pieces = request.split(' ')
     if len(pieces) != 3:  # does the http request line look approximately correct?
         http_status = 400
-        response = b'<html><body><p>400 Bad Request</p></body></html>'
+        response = b'Bad Request !=3'
         bytes_sent = send_simple_response(writer, http_status, CT_TEXT_HTML, response)
     else:
         verb = pieces[0]
@@ -364,7 +366,7 @@ async def serve_http_client(reader, writer):
             bytes_sent = send_simple_response(writer, http_status, CT_TEXT_HTML, response)
         elif protocol not in ['HTTP/1.0', 'HTTP/1.1']:
             http_status = 400
-            response = '<html><body><p>protocol {} is not supported'.format(protocol).encode('utf-8')
+            response = b'that protocol is not supported'
             bytes_sent = send_simple_response(writer, http_status, CT_TEXT_HTML, response)
         else:
             # get HTTP request headers
@@ -416,22 +418,22 @@ async def serve_http_client(reader, writer):
                         requested_bearing = int(requested_bearing)
                         if 0 <= requested_bearing <= 360:
                             print('sending rotor command')
-                            result = set_rotator_bearing(requested_bearing)
+                            bearing = set_rotator_bearing(requested_bearing)
                             http_status = 200
-                            response = '{}\r\n'.format(result).encode('utf-8')
+                            response = '{}\r\n'.format(bearing).encode('utf-8')
                             bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
                         else:
                             http_status = 400
-                            response = 'parameter out of range\r\n'.encode('utf-8')
+                            response = b'parameter out of range\r\n'
                             bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
                     except Exception as ex:
                         http_status = 500
                         response = 'uh oh: {}'.format(ex).encode('utf-8')
                         bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
                 else:
-                    current_bearing = get_rotator_bearing()
+                    bearing = get_rotator_bearing()
                     http_status = 200
-                    response = '{}\r\n'.format(current_bearing).encode('utf-8')
+                    response = '{}\r\n'.format(bearing).encode('utf-8')
                     bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
             elif target == '/api/config':
                 if verb == 'GET':
@@ -452,11 +454,11 @@ async def serve_http_client(reader, writer):
                         config = {'SSID': ssid, 'secret': secret, 'tcp_port': tcp_port, 'web_port': web_port}
                         # config = json.dumps(args)
                         save_config(config)
-                        response = 'ok\r\n'.encode('utf-8')
+                        response = b'ok\r\n'
                         http_status = 200
                         bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
                     else:
-                        response = 'parameter out of range\r\n'.encode('utf-8')
+                        response = b'parameter out of range\r\n'
                         http_status = 400
                         bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
             elif target == '/api/get_files':
@@ -534,7 +536,7 @@ async def serve_http_client(reader, writer):
                                         output_file.close()
                                         output_file = None
                                         response = 'Uploaded {} successfully'.format(filename).encode('utf-8')
-                                        http_status = 200
+                                        http_status = 201
                                     start = end + 2
                                 else:  # must be reading headers or boundary
                                     line = ''
@@ -556,8 +558,8 @@ async def serve_http_client(reader, writer):
                                             fn = pieces[2].strip()
                                             if fn.startswith('filename="'):
                                                 filename = fn[10:-1]
-                                                if not valid_upload(filename):
-                                                    response = 'bad filename {}'.format(filename).encode('utf-8')
+                                                if not valid_filename(filename):
+                                                    response = b'bad filename'
                                                     http_status = 500
                                                     more_bytes = False
                                                     start = len(buffer)
@@ -572,9 +574,38 @@ async def serve_http_client(reader, writer):
                                         http_status = 500
                                         response = 'unmanaged state {}'.format(state).encode('utf-8')
                     bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
+            elif target == '/api/remove_file':
+                filename = args.get('filename')
+                if valid_filename(filename) and filename not in DANGER_ZONE_FILE_NAMES:
+                    filename = CONTENT_DIR + filename
+                    try:
+                        os.remove(filename)
+                        http_status = 200
+                        response = b'removed\r\n'
+                    except OSError as ose:
+                        http_status = 409
+                        response = str(ose).encode('utf-8')
+                else:
+                    http_status = 409
+                    response = b'bad file name\r\n'
+                bytes_sent = send_simple_response(writer, http_status, CT_APP_JSON, response)
+            elif target == '/api/rename_file':
+                filename = args.get('filename')
+                newname = args.get('newname')
+                if valid_filename(filename) and valid_filename(newname):
+                    filename = CONTENT_DIR + filename
+                    newname = CONTENT_DIR + filename
+                    try:
+                        os.replace(filename, newname)
+                        http_status = 200
+                        response = b'renamed\r\n'
+                    except OSError as ose:
+                        http_status = 409
+                        response = str(ose).encode('utf-8')
+                bytes_sent = send_simple_response(writer, http_status, CT_APP_JSON, response)
             elif target == '/api/restart' and upython:
                 restart = True
-                response = 'ok\r\n'.encode('utf-8')
+                response = b'ok\r\n'
                 http_status = 200
                 bytes_sent = send_simple_response(writer, http_status, CT_TEXT_TEXT, response)
             else:
@@ -587,6 +618,7 @@ async def serve_http_client(reader, writer):
     tc = milliseconds()
     print('{} {} {} {}'.format(partner, request, http_status, bytes_sent))
     print('web client disconnected, elapsed time {} ms'.format(tc - t0))
+    gc.collect()
 
 
 async def main():
@@ -630,7 +662,7 @@ async def main():
                 await asyncio.sleep(blink_list.pop(0))
                 onboard.off()
                 blinky.off()
-                await asyncio.sleep(blink_list.pop(0))
+                await asyncio.sleep(MORSE_ESP if len(blink_list) > 0 else MORSE_LSP)
             if restart or (button.value() == 0 and not ap_mode):
                 machine.soft_reset()
         else:
@@ -644,12 +676,12 @@ async def main():
             print('\x08\\', end='')
 
 
-print('starting')
-try:
-    asyncio.run(main())
-except KeyboardInterrupt:
-    print('bye')
-finally:
-    asyncio.new_event_loop()
-
-print('done')
+if __name__ == '__main__':
+    print('starting')
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print('bye')
+    finally:
+        asyncio.new_event_loop()
+    print('done')
