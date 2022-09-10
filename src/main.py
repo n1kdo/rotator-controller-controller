@@ -594,9 +594,13 @@ async def serve_http_client(reader, writer):
                 newname = args.get('newname')
                 if valid_filename(filename) and valid_filename(newname):
                     filename = CONTENT_DIR + filename
-                    newname = CONTENT_DIR + filename
+                    newname = CONTENT_DIR + newname
                     try:
-                        os.replace(filename, newname)
+                        os.remove(newname)
+                    except OSError as ose:
+                        pass
+                    try:
+                        os.rename(filename, newname)
                         http_status = 200
                         response = b'renamed\r\n'
                     except OSError as ose:
