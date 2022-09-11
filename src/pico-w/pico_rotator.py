@@ -33,7 +33,6 @@ ERROR_BUSY = -13
 ERROR_UNKNOWN = -99
 
 from machine import Pin, UART
-import uasyncio as asyncio
 
 last_bearing = ERROR_UNKNOWN
 last_requested_bearing = ERROR_UNKNOWN
@@ -80,7 +79,6 @@ def set_rotator_bearing(bearing):
             message = 'soAP1{:03n}\r'.format(int(bearing)).encode('utf-8')
             uart = UART(0, baudrate=BAUD_RATE, parity=None, stop=1, timeout=100, tx=Pin(0), rx=Pin(1))
             uart.write(message)
-            #print(message)
             last_requested_bearing = bearing
             result = bearing
         except Exception as ex:

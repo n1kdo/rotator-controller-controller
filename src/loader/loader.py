@@ -2,6 +2,7 @@
 
 import os
 import pyboard
+import serial
 from serial.tools.list_ports import comports
 BAUD_RATE = 115200
 
@@ -59,13 +60,25 @@ def load_device(port):
         put_file(file, target)
     target.exit_raw_repl()
     target.close()
-    print('\n\nPower cycle device')
+
+    # this is a terrible hack that allows the Pico-W to be restarted by this script.
+    # it exits the REPL by sending a control-D.
+    # why this functionality is not the Pyboard library is a good question.
+    with serial.Serial(port=port,
+                       baudrate=BAUD_RATE,
+                       parity=serial.PARITY_NONE,
+                       bytesize=serial.EIGHTBITS,
+                       stopbits=serial.STOPBITS_ONE,
+                       timeout=1) as pyboard_port:
+        pyboard_port.write(b'\x04')
+
+    print('\nDevice should restart.')
 
 
 def main():
     ports = get_ports_list()
     print(ports)
-    port = 'com10'
+    port = 'com5'
     load_device(port)
 
 
