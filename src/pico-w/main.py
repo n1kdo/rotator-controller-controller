@@ -45,6 +45,17 @@ else:
     import asyncio
     from windows_rotator import get_rotator_bearing, set_rotator_bearing
 
+    class Machine:
+        """
+        fake micropython stuff
+        """
+        @staticmethod
+        def soft_reset():
+            print('Machine.soft_reset()')
+
+    machine = Machine()
+
+
 if upython:
     onboard = Pin('LED', Pin.OUT, value=0)
     blinky = Pin(2, Pin.OUT, value=0)  # blinky external LED
@@ -105,25 +116,36 @@ MORSE_PERIOD = 0.150  # the speed of the morse code is set by the dit length of 
 MORSE_DIT = MORSE_PERIOD
 MORSE_ESP = MORSE_DIT  # inter-element space
 MORSE_DAH = 3 * MORSE_PERIOD
-MORSE_LSP = MORSE_DAH  # inter-letter space
+MORSE_LSP = 5 * MORSE_PERIOD  #  farnsworth-ish , was MORSE_DAH  # inter-letter space
 MORSE_PATTERNS = {
     'A': [MORSE_DIT, MORSE_DAH],
-    'C': [MORSE_DAH, MORSE_DIT, MORSE_DAH, MORSE_DIT],
-    'E': [MORSE_DIT],
-    'I': [MORSE_DIT, MORSE_DIT],
-    'S': [MORSE_DIT, MORSE_DIT, MORSE_DIT],
-    'H': [MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DIT],
-    'O': [MORSE_DAH, MORSE_DAH, MORSE_DAH],
-    'N': [MORSE_DAH, MORSE_DIT],
-    'D': [MORSE_DAH, MORSE_DIT, MORSE_DIT],
-    'B': [MORSE_DAH, MORSE_DIT, MORSE_DIT, MORSE_DIT],
+    #  'C': [MORSE_DAH, MORSE_DIT, MORSE_DAH, MORSE_DIT],
+    #  'E': [MORSE_DIT],
+    #  'I': [MORSE_DIT, MORSE_DIT],
+    #  'S': [MORSE_DIT, MORSE_DIT, MORSE_DIT],
+    #  'H': [MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DIT],
+    #  'O': [MORSE_DAH, MORSE_DAH, MORSE_DAH],
+    #  'N': [MORSE_DAH, MORSE_DIT],
+    #  'D': [MORSE_DAH, MORSE_DIT, MORSE_DIT],
+    #  'B': [MORSE_DAH, MORSE_DIT, MORSE_DIT, MORSE_DIT],
+    '0': [MORSE_DAH, MORSE_DAH, MORSE_DAH, MORSE_DAH, MORSE_DAH],
+    '1': [MORSE_DIT, MORSE_DAH, MORSE_DAH, MORSE_DAH, MORSE_DAH],
+    '2': [MORSE_DIT, MORSE_DIT, MORSE_DAH, MORSE_DAH, MORSE_DAH],
+    '3': [MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DAH, MORSE_DAH],
+    '4': [MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DAH],
+    '5': [MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DIT],
+    '6': [MORSE_DAH, MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DIT],
+    '7': [MORSE_DAH, MORSE_DAH, MORSE_DIT, MORSE_DIT, MORSE_DIT],
+    '8': [MORSE_DAH, MORSE_DAH, MORSE_DAH, MORSE_DIT, MORSE_DIT],
+    '9': [MORSE_DAH, MORSE_DAH, MORSE_DAH, MORSE_DAH, MORSE_DIT],
+    ' ': [0, 0, 0, 0, 0],  # 5 element spaces then a letter space = 10 element pause
 }
 MP_START_BOUND = 1
 MP_HEADERS = 2
 MP_DATA = 3
 MP_END_BOUND = 4
 
-blink_code = 'O'
+morse_message = ''
 restart = False
 
 
@@ -222,7 +244,8 @@ def send_simple_response(writer, http_status=200, content_type=None, response=No
 
 
 def connect_to_network(ssid, secret, access_point_mode=False):
-    global blink_code
+    global morse_message
+
     if access_point_mode:
         print('Starting setup WLAN...')
         wlan = network.WLAN(network.AP_IF)
@@ -244,12 +267,11 @@ def connect_to_network(ssid, secret, access_point_mode=False):
         wlan.active(True)
         print(wlan.active())
         print('ssid={}'.format(wlan.config('ssid')))
-        blink_code = 'A'
     else:
         print('Connecting to WLAN...')
-        blink_code = 'C'  # for connection
         wlan = network.WLAN(network.STA_IF)
         wlan.config(pm=0xa11140)  # disable power save, this is a server.
+        # wlan.config(hostname='not supported on pico-w')
         wlan.active(True)
         wlan.connect(ssid, secret)
         max_wait = 10
@@ -262,11 +284,12 @@ def connect_to_network(ssid, secret, access_point_mode=False):
             time.sleep(1)
         if wlan.status() != network.STAT_GOT_IP:
             raise RuntimeError('Network connection failed')
-        blink_code = 'O'
     onboard.off()
     status = wlan.ifconfig()
     ip_address = status[0]
-    print('my ip = {}'.format(ip_address))
+    morse_message = 'A {} '.format(ip_address) if ap_mode else '{} '.format(ip_address)
+    morse_message = morse_message.replace('.', ' ')
+    print(morse_message)
     return ip_address
 
 
@@ -603,9 +626,12 @@ async def serve_http_client(reader, writer):
                         os.rename(filename, newname)
                         http_status = 200
                         response = b'renamed\r\n'
-                    except OSError as ose:
+                    except Exception as ose:
                         http_status = 409
                         response = str(ose).encode('utf-8')
+                else:
+                    http_status = 409
+                    response = b'bad file name'
                 bytes_sent = send_simple_response(writer, http_status, CT_APP_JSON, response)
             elif target == '/api/restart' and upython:
                 restart = True
@@ -658,17 +684,23 @@ async def main():
 
     while True:
         if upython:
-            blink_pattern = MORSE_PATTERNS.get(blink_code) or [0.50, 0.50]
-            blink_list = [elem for elem in blink_pattern]
-            while len(blink_list) > 0:
-                onboard.on()
-                blinky.on()
-                await asyncio.sleep(blink_list.pop(0))
-                onboard.off()
-                blinky.off()
-                await asyncio.sleep(MORSE_ESP if len(blink_list) > 0 else MORSE_LSP)
-            if restart or (button.value() == 0 and not ap_mode):
-                machine.soft_reset()
+            for morse_letter in morse_message:
+                blink_pattern = MORSE_PATTERNS.get(morse_letter)
+                if blink_pattern is None:
+                    print('no pattern for letter {}'.format(morse_letter))
+                    blink_pattern = MORSE_PATTERNS.get(' ')
+                blink_list = [elem for elem in blink_pattern]
+                while len(blink_list) > 0:
+                    t = blink_list.pop(0)
+                    if t > 0:
+                        onboard.on()
+                        blinky.on()
+                        await asyncio.sleep(t)
+                        onboard.off()
+                        blinky.off()
+                    await asyncio.sleep(MORSE_ESP if len(blink_list) > 0 else MORSE_LSP)
+                if restart or (button.value() == 0 and not ap_mode):
+                    machine.soft_reset()
         else:
             await asyncio.sleep(1.0)
             print('\x08|', end='')
