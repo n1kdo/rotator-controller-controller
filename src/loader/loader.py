@@ -1,4 +1,6 @@
 #!/bin/env python3
+__author__ = 'J. B. Otterson'
+__copyright__ = 'Copyright 2022, J. B. Otterson N1KDO.'
 
 import os
 import pyboard
@@ -61,9 +63,9 @@ def load_device(port):
     target.exit_raw_repl()
     target.close()
 
-    # this is a terrible hack that allows the Pico-W to be restarted by this script.
+    # this is a hack that allows the Pico-W to be restarted by this script.
     # it exits the REPL by sending a control-D.
-    # why this functionality is not the Pyboard library is a good question.
+    # why this functionality is not the Pyboard module is a good question.
     with serial.Serial(port=port,
                        baudrate=BAUD_RATE,
                        parity=serial.PARITY_NONE,
@@ -71,15 +73,31 @@ def load_device(port):
                        stopbits=serial.STOPBITS_ONE,
                        timeout=1) as pyboard_port:
         pyboard_port.write(b'\x04')
-
     print('\nDevice should restart.')
 
 
 def main():
-    ports = get_ports_list()
-    print(ports)
-    port = 'com5'
-    load_device(port)
+    print('Disconnect the Pico-W if it is connected.')
+    input('(press enter to continue...)')
+    ports_1 = get_ports_list()
+    print('Detected serial ports: ' + ' '.join(ports_1))
+    print('\nConnect the Pico-W to USB port.')
+    input('(press enter to continue...)')
+    ports_2 = get_ports_list()
+    print('Detected serial ports: ' + ' '.join(ports_2))
+
+    picow_port = None
+    for port in ports_2:
+        if port not in ports_1:
+            picow_port = port
+            break
+
+    if picow_port is None:
+        print('Could not identify Pico-W communications port.  Exiting.')
+        exit(1)
+
+    print('\nAttempting to load device on port {}'.format(picow_port))
+    load_device(picow_port)
 
 
 if __name__ == "__main__":
