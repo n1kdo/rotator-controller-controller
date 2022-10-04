@@ -25,7 +25,6 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 import serial
-from serial import SerialException
 
 #ROTOR_PORT = '/dev/ttyUSB0'
 ROTOR_PORT = 'COM6:'
