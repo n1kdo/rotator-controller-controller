@@ -45,25 +45,27 @@ else:
     import asyncio
     from windows_rotator import get_rotator_bearing, set_rotator_bearing
 
+
     class Machine:
         """
         fake micropython stuff
         """
+
         @staticmethod
         def soft_reset():
             print('Machine.soft_reset()')
 
-    machine = Machine()
 
+    machine = Machine()
 
 if upython:
     onboard = Pin('LED', Pin.OUT, value=0)
+    onboard.on()
     blinky = Pin(2, Pin.OUT, value=0)  # blinky external LED
     button = Pin(3, Pin.IN, Pin.PULL_UP)
     ap_mode = button.value() == 0
 else:
     ap_mode = False
-
 
 BUFFER_SIZE = 4096
 CONFIG_FILE = 'data/config.json'
@@ -116,13 +118,14 @@ MORSE_PERIOD = 0.150  # the speed of the morse code is set by the dit length of 
 MORSE_DIT = MORSE_PERIOD
 MORSE_ESP = MORSE_DIT  # inter-element space
 MORSE_DAH = 3 * MORSE_PERIOD
-MORSE_LSP = 5 * MORSE_PERIOD  #  farnsworth-ish , was MORSE_DAH  # inter-letter space
-MORSE_PATTERNS = {
+MORSE_LSP = 5 * MORSE_PERIOD  # farnsworth-ish , was MORSE_DAH  # inter-letter space
+MORSE_PATTERNS = {  # sparse to save space
     'A': [MORSE_DIT, MORSE_DAH],
     #  'C': [MORSE_DAH, MORSE_DIT, MORSE_DAH, MORSE_DIT],
-    #  'E': [MORSE_DIT],
+    'E': [MORSE_DIT],
     #  'I': [MORSE_DIT, MORSE_DIT],
     #  'S': [MORSE_DIT, MORSE_DIT, MORSE_DIT],
+    'R': [MORSE_DIT, MORSE_DAH, MORSE_DIT ],
     #  'H': [MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DIT],
     #  'O': [MORSE_DAH, MORSE_DAH, MORSE_DAH],
     #  'N': [MORSE_DAH, MORSE_DIT],
@@ -283,8 +286,10 @@ def connect_to_network(ssid, secret, access_point_mode=False):
             print('Waiting for connection to come up, status={}'.format(status))
             time.sleep(1)
         if wlan.status() != network.STAT_GOT_IP:
+            morse_message = 'ERR'
+            # return None
             raise RuntimeError('Network connection failed')
-    onboard.off()
+
     status = wlan.ifconfig()
     ip_address = status[0]
     morse_message = 'A {} '.format(ip_address) if ap_mode else '{} '.format(ip_address)
@@ -651,6 +656,24 @@ async def serve_http_client(reader, writer):
     gc.collect()
 
 
+async def morse_sender():
+    while True:
+        msg = morse_message  # using global...
+        for morse_letter in msg:
+            blink_pattern = MORSE_PATTERNS.get(morse_letter)
+            if blink_pattern is None:
+                print('Warning: no pattern for letter {}'.format(morse_letter))
+                blink_pattern = MORSE_PATTERNS.get(' ')
+            blink_list = [elem for elem in blink_pattern]
+            while len(blink_list) > 0:
+                t = blink_list.pop(0)
+                if t > 0:
+                    blinky.on()
+                    await asyncio.sleep(t)
+                    blinky.off()
+                await asyncio.sleep(MORSE_ESP if len(blink_list) > 0 else MORSE_LSP)
+
+
 async def main():
     config = read_config()
     tcp_port = safe_int(config.get('tcp_port') or DEFAULT_TCP_PORT, DEFAULT_TCP_PORT)
@@ -669,7 +692,8 @@ async def main():
     connected = True
     if upython:
         try:
-            connect_to_network(ssid=ssid, secret=secret, access_point_mode=ap_mode)
+            ip_address = connect_to_network(ssid=ssid, secret=secret, access_point_mode=ap_mode)
+            connected = ip_address is not None
         except Exception as ex:
             connected = False
             print(type(ex), ex)
@@ -682,25 +706,14 @@ async def main():
     else:
         print('no network connection')
 
+    if upython:
+        asyncio.create_task(morse_sender())
+
     while True:
         if upython:
-            for morse_letter in morse_message:
-                blink_pattern = MORSE_PATTERNS.get(morse_letter)
-                if blink_pattern is None:
-                    print('no pattern for letter {}'.format(morse_letter))
-                    blink_pattern = MORSE_PATTERNS.get(' ')
-                blink_list = [elem for elem in blink_pattern]
-                while len(blink_list) > 0:
-                    t = blink_list.pop(0)
-                    if t > 0:
-                        onboard.on()
-                        blinky.on()
-                        await asyncio.sleep(t)
-                        onboard.off()
-                        blinky.off()
-                    await asyncio.sleep(MORSE_ESP if len(blink_list) > 0 else MORSE_LSP)
-                if restart or (button.value() == 0 and not ap_mode):
-                    machine.soft_reset()
+            await asyncio.sleep(0.25)
+            if restart or (button.value() == 0 and not ap_mode):
+                machine.soft_reset()
         else:
             await asyncio.sleep(1.0)
             print('\x08|', end='')
@@ -719,5 +732,5 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         print('bye')
     finally:
-        asyncio.new_event_loop()
+        asyncio.new_event_loop()  # why? to drain?
     print('done')
