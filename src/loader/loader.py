@@ -8,7 +8,7 @@ import serial
 from serial.tools.list_ports import comports
 BAUD_RATE = 115200
 
-SRC_DIR = '../pico-w/'
+SRC_DIR = '../rotator/'
 FILES_LIST = [
     'content/',
     'data/',

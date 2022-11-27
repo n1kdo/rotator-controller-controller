@@ -114,34 +114,34 @@ HTTP_STATUS_TEXT = {
     502: 'Bad Gateway',
     503: 'Service Unavailable',
 }
-MORSE_PERIOD = 0.150  # the speed of the morse code is set by the dit length of 150 ms.
+MORSE_PERIOD = 15  # x 10 to MS: the speed of the morse code is set by the dit length of 150 ms.
 MORSE_DIT = MORSE_PERIOD
 MORSE_ESP = MORSE_DIT  # inter-element space
 MORSE_DAH = 3 * MORSE_PERIOD
-MORSE_LSP = 5 * MORSE_PERIOD  # farnsworth-ish , was MORSE_DAH  # inter-letter space
+MORSE_LSP = 5 * MORSE_PERIOD  # more space between letters
 MORSE_PATTERNS = {  # sparse to save space
-    'A': [MORSE_DIT, MORSE_DAH],
-    #  'C': [MORSE_DAH, MORSE_DIT, MORSE_DAH, MORSE_DIT],
-    'E': [MORSE_DIT],
-    #  'I': [MORSE_DIT, MORSE_DIT],
-    #  'S': [MORSE_DIT, MORSE_DIT, MORSE_DIT],
-    'R': [MORSE_DIT, MORSE_DAH, MORSE_DIT ],
-    #  'H': [MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DIT],
-    #  'O': [MORSE_DAH, MORSE_DAH, MORSE_DAH],
-    #  'N': [MORSE_DAH, MORSE_DIT],
-    #  'D': [MORSE_DAH, MORSE_DIT, MORSE_DIT],
-    #  'B': [MORSE_DAH, MORSE_DIT, MORSE_DIT, MORSE_DIT],
-    '0': [MORSE_DAH, MORSE_DAH, MORSE_DAH, MORSE_DAH, MORSE_DAH],
-    '1': [MORSE_DIT, MORSE_DAH, MORSE_DAH, MORSE_DAH, MORSE_DAH],
-    '2': [MORSE_DIT, MORSE_DIT, MORSE_DAH, MORSE_DAH, MORSE_DAH],
-    '3': [MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DAH, MORSE_DAH],
-    '4': [MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DAH],
-    '5': [MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DIT],
-    '6': [MORSE_DAH, MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DIT],
-    '7': [MORSE_DAH, MORSE_DAH, MORSE_DIT, MORSE_DIT, MORSE_DIT],
-    '8': [MORSE_DAH, MORSE_DAH, MORSE_DAH, MORSE_DIT, MORSE_DIT],
-    '9': [MORSE_DAH, MORSE_DAH, MORSE_DAH, MORSE_DAH, MORSE_DIT],
-    ' ': [0, 0, 0, 0, 0],  # 5 element spaces then a letter space = 10 element pause
+    ' ': (0, 0, 0, 0, 0),  # 5 element spaces then a letter space = 10 element pause  # space is 0x20 ascii
+    '0': (MORSE_DAH, MORSE_DAH, MORSE_DAH, MORSE_DAH, MORSE_DAH),  # 0 is 0x30 ascii
+    '1': (MORSE_DIT, MORSE_DAH, MORSE_DAH, MORSE_DAH, MORSE_DAH),
+    '2': (MORSE_DIT, MORSE_DIT, MORSE_DAH, MORSE_DAH, MORSE_DAH),
+    '3': (MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DAH, MORSE_DAH),
+    '4': (MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DAH),
+    '5': (MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DIT),
+    '6': (MORSE_DAH, MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DIT),
+    '7': (MORSE_DAH, MORSE_DAH, MORSE_DIT, MORSE_DIT, MORSE_DIT),
+    '8': (MORSE_DAH, MORSE_DAH, MORSE_DAH, MORSE_DIT, MORSE_DIT),
+    '9': (MORSE_DAH, MORSE_DAH, MORSE_DAH, MORSE_DAH, MORSE_DIT),
+    'A': (MORSE_DIT, MORSE_DAH),                                    # 'A' is 0x41 ascii
+    #  'C': (MORSE_DAH, MORSE_DIT, MORSE_DAH, MORSE_DIT),
+    'E': (MORSE_DIT, ),
+    #  'I': (MORSE_DIT, MORSE_DIT),
+    #  'S': (MORSE_DIT, MORSE_DIT, MORSE_DIT),
+    'R': (MORSE_DIT, MORSE_DAH, MORSE_DIT),
+    #  'H': (MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DIT),
+    #  'O': (MORSE_DAH, MORSE_DAH, MORSE_DAH),
+    #  'N': (MORSE_DAH, MORSE_DIT),
+    #  'D': (MORSE_DAH, MORSE_DIT, MORSE_DIT),
+    #  'B': (MORSE_DAH, MORSE_DIT, MORSE_DIT, MORSE_DIT),
 }
 MP_START_BOUND = 1
 MP_HEADERS = 2
@@ -364,6 +364,7 @@ async def serve_serial_client(reader, writer):
 
 async def serve_http_client(reader, writer):
     global restart
+    verbosity = 3
     t0 = milliseconds()
     http_status = 418  # can only make tea, sorry.
     bytes_sent = 0
@@ -650,9 +651,13 @@ async def serve_http_client(reader, writer):
     await writer.drain()
     writer.close()
     await writer.wait_closed()
-    tc = milliseconds()
-    print('{} {} {} {}'.format(partner, request, http_status, bytes_sent))
-    print('web client disconnected, elapsed time {} ms'.format(tc - t0))
+    elapsed = milliseconds() - t0
+    if http_status == 200:
+        if verbosity > 2:
+            print('{} {} {} {} {} ms'.format(partner, request, http_status, bytes_sent, elapsed))
+    else:
+        if verbosity >= 1:
+            print('{} {} {} {} {} ms'.format(partner, request, http_status, bytes_sent, elapsed))
     gc.collect()
 
 
@@ -668,10 +673,11 @@ async def morse_sender():
             while len(blink_list) > 0:
                 t = blink_list.pop(0)
                 if t > 0:
+                    # blink time is in milliseconds!, but data is in 10 msec
                     blinky.on()
-                    await asyncio.sleep(t)
+                    await asyncio.sleep(t/100)
                     blinky.off()
-                await asyncio.sleep(MORSE_ESP if len(blink_list) > 0 else MORSE_LSP)
+                await asyncio.sleep(MORSE_ESP / 100 if len(blink_list) > 0 else MORSE_LSP / 100)
 
 
 async def main():
