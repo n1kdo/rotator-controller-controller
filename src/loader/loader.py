@@ -12,9 +12,12 @@ SRC_DIR = '../rotator/'
 FILES_LIST = [
     'content/',
     'data/',
+    'http_server.py',
     'main.py',
+    'morse_code.py',
     'pico_rotator.py',
     'content/compass-background.png',
+    'content/favicon.ico',
     'content/files.html',
     'content/rotator.html',
     'content/setup.html',
@@ -81,7 +84,7 @@ def main():
     input('(press enter to continue...)')
     ports_1 = get_ports_list()
     print('Detected serial ports: ' + ' '.join(ports_1))
-    print('\nConnect the Pico-W to USB port.')
+    print('\nConnect the Pico-W to USB port. Wait for the USB connected sound.')
     input('(press enter to continue...)')
     ports_2 = get_ports_list()
     print('Detected serial ports: ' + ' '.join(ports_2))
