@@ -1,6 +1,7 @@
 #
-# DCU-3 and compatible rotator control.
+# DCU-1 and compatible rotator control.
 # only tested on Rotor-EZ so far.
+# should work on DCU-1 and compatibles (e.g. Green Heron)
 #
 
 __author__ = 'J. B. Otterson'
@@ -24,7 +25,14 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
+
 from serialport import SerialPort
+import sys
+impl_name = sys.implementation.name
+if impl_name == 'cpython':
+    import asyncio
+else:
+    import uasyncio as asyncio
 
 
 class Rotator:
@@ -36,23 +44,45 @@ class Rotator:
     ERROR_UNKNOWN = -99
 
     def __init__(self):
+        self.serial_port_locked = True
+        #self.primitive = True  # use two-command mode for NOT Rotor-EZ or Green Heron
+        self.primitive = False  # use one command to set direction and move (Rotor-EZ, Green Heron)
+        self.buffer = bytearray(16)
         self.last_bearing = Rotator.ERROR_UNKNOWN
         self.last_requested_bearing = Rotator.ERROR_UNKNOWN
+        self.serial_port = SerialPort(baudrate=Rotator.BAUD_RATE, timeout=0.05)
+        self.initialized = False
         self.serial_port_locked = False
-        self.serial_port = SerialPort(baudrate=Rotator.BAUD_RATE, timeout=0.1)
 
-    def get_rotator_bearing(self):
+    async def initialize(self):
+        await self.send_and_receive(b'so')  # ROTOR EZ disable Stuck mode, disable Coast mode. Jeff--reconfigure rotor!
+        await self.send_and_receive(b';')
+        self.initialized = True
+
+    async def send_and_receive(self, message, timeout=0.05):
+        # flush receive buffer
+        while len(self.serial_port.read()) > 0:
+            pass
+        # send the message
+        self.serial_port.write(message)
+        self.serial_port.flush()
+        # wait a short bit
+        await asyncio.sleep(timeout)
+        bytes_received = self.serial_port.readinto(self.buffer)
+        return self.buffer[:bytes_received].decode()
+
+    async def get_rotator_bearing(self):
         if self.serial_port_locked:
             return Rotator.ERROR_BUSY
         else:
             self.serial_port_locked = True
             try:
-                self.serial_port.write(b'AI1\r')
-                result_bytes = self.serial_port.read(4)
-                if result_bytes is None or len(result_bytes) == 0:
+                if not self.initialized:
+                    await self.initialize()
+                result = await self.send_and_receive(b'AI1;')
+                if len(result) == 0:
                     self.last_bearing = Rotator.ERROR_NO_DATA
                 else:
-                    result = result_bytes.decode()
                     if result[0] == ';':
                         self.last_bearing = int(result[1:])
                     else:
@@ -64,15 +94,24 @@ class Rotator:
                 self.serial_port_locked = False
         return self.last_bearing
 
-    def set_rotator_bearing(self, bearing):
+    async def set_rotator_bearing(self, bearing):
         if self.serial_port_locked:
             result = Rotator.ERROR_BUSY
         else:
             self.serial_port_locked = True
             try:
-                message = 'soAP1{:03n}\r'.format(int(bearing)).encode('utf-8')
-                self.serial_port.write(message)
-                self.last_requested_bearing = bearing
+                if not self.initialized:
+                    await self.initialize()
+                if self.primitive:
+                    # hygain set direction
+                    # not expecting any response.
+                    message = f'AP1{bearing:03n};'.encode('utf-8')
+                    await self.send_and_receive(message)
+                    await self.send_and_receive(b'AM1;')
+                    self.last_requested_bearing = bearing
+                else:
+                    message = 'soAP1{:03n}\r'.format(int(bearing)).encode('utf-8')
+                    await self.send_and_receive(message)
                 result = bearing
             except Exception as ex:
                 print(ex)

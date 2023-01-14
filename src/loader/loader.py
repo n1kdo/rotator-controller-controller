@@ -12,7 +12,7 @@ SRC_DIR = '../rotator/'
 FILES_LIST = [
     'content/',
     'data/',
-    'dcu3_rotator.py',
+    'dcu1_rotator.py',
     'http_server.py',
     'main.py',
     'morse_code.py',
