@@ -80,6 +80,7 @@ else:
 
     machine = Machine()
 
+# noinspection PyUnboundLocalVariable
 onboard = machine.Pin('LED', machine.Pin.OUT, value=0)
 onboard.on()
 morse_led = machine.Pin(2, machine.Pin.OUT, value=0)  # status LED
@@ -146,7 +147,6 @@ def valid_filename(filename):
     if HttpServer.FILE_EXTENSION_TO_CONTENT_TYPE_MAP.get(extension) is None:
         return False
     return True
-
 
 
 def connect_to_network(config):
@@ -234,7 +234,7 @@ def connect_to_network(config):
 
     status = wlan.ifconfig()
     ip_address = status[0]
-    message = 'A  {}  '.format(ip_address) if access_point_mode else '{} '.format(ip_address)
+    message = 'AP {} '.format(ip_address) if access_point_mode else '{} '.format(ip_address)
     message = message.replace('.', ' ')
     morse_code_sender.set_message(message)
     print(message)
@@ -613,7 +613,7 @@ async def main():
     if len(secret) > 64:
         secret = ''
     connected = True
-    ap_mode = config.get('ap_mode', False)
+    ap_mode = config.get('ap_mode') or False
     if upython:
         try:
             ip_address = connect_to_network(config)
