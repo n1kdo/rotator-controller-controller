@@ -1,6 +1,6 @@
 # Raspberry Pi Pico W IOT Antenna Rotator Controller Controller
 
-This project uses a Raspberry Pi Pico W to internet-enable a antenna 
+This project uses a Raspberry Pi Pico W to internet-enable an antenna 
 rotator controller that has a RS-232 interface.
 
 ![](rotator_controller_controller.png)

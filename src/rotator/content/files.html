@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!--suppress ALL -->
 <html xmlns="http://www.w3.org/1999/html" lang="en">
 <!-- Copyright 2022, J. B. Otterson N1KDO. -->
 <head>
@@ -152,8 +153,8 @@
     function upload() {
         let file = document.getElementById("file_input").files[0]
         if (file !== undefined) {
-            let formdata = new FormData;
-            formdata.append('file', file)
+            let form_data = new FormData;
+            form_data.append('file', file)
             let xmlHttp = new XMLHttpRequest();
             if (xmlHttp == null) {
                 alert("get a better browser!");
@@ -165,7 +166,7 @@
                 }
             }
             xmlHttp.open("POST", "/api/upload_file", true);
-            xmlHttp.send(formdata);
+            xmlHttp.send(form_data);
         }
     }
 
@@ -184,6 +185,7 @@
         document.getElementById("upload_button").disabled = false;
     }
 
+    // despite what the static analyzer says, this function is used.  do not remove it.
     function remove_file(filename) {
         if (filename !== undefined) {
             let payload = {};
@@ -210,6 +212,7 @@
         get_files();
     }
 
+    // despite what the static analyzer says, this function is used.  do not remove it.
     function rename_file(filename) {
         if (filename !== undefined) {
         let newname = prompt('enter new name for "' + filename + '"');

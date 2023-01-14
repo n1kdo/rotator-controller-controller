@@ -57,6 +57,10 @@ else:
         def soft_reset():
             print('Machine.soft_reset()')
 
+        @staticmethod
+        def reset():
+            print('Machine.reset()')
+
         class Pin(object):
             OUT = 1
             IN = 0
@@ -392,6 +396,10 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
             response = b'parameter out of range\r\n'
             http_status = 400
             bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+    else:
+        response = b'GET or PUT only.'
+        http_status = 400
+        bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     return bytes_sent, http_status
 
 
@@ -517,6 +525,10 @@ async def api_upload_file_callback(http, verb, args, reader, writer, request_hea
                             http_status = 500
                             response = 'unmanaged state {}'.format(state).encode('utf-8')
         bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+    else:
+        response = b'PUT only.'
+        http_status = 400
+        bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     return bytes_sent, http_status
 
 
@@ -606,12 +618,6 @@ async def main():
     web_port = safe_int(config.get('web_port') or DEFAULT_WEB_PORT, DEFAULT_WEB_PORT)
     if web_port < 0 or web_port > 65535:
         web_port = DEFAULT_WEB_PORT
-    ssid = config.get('SSID') or ''
-    if len(ssid) == 0 or len(ssid) > 64:
-        ssid = DEFAULT_SSID
-    secret = config.get('secret') or ''
-    if len(secret) > 64:
-        secret = ''
     connected = True
     ap_mode = config.get('ap_mode') or False
     if upython:
@@ -633,6 +639,7 @@ async def main():
     if upython:
         asyncio.create_task(morse_code_sender.morse_sender())
 
+    reset_button_pressed_count = 0
     while True:
         if upython:
             await asyncio.sleep(0.25)

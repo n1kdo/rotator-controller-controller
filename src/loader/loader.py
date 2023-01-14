@@ -34,7 +34,7 @@ def get_ports_list():
     return sorted(ports_list, key=lambda k: int(k[3:]))
 
 
-def put_file_progress_callback(a,b):
+def put_file_progress_callback(a, b):
     print('.', end='')
 
 
