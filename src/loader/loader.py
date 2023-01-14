@@ -12,10 +12,11 @@ SRC_DIR = '../rotator/'
 FILES_LIST = [
     'content/',
     'data/',
+    'dcu3_rotator.py',
     'http_server.py',
     'main.py',
     'morse_code.py',
-    'pico_rotator.py',
+    'serialport.py',
     'content/compass-background.png',
     'content/favicon.ico',
     'content/files.html',

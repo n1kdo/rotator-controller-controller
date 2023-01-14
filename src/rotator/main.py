@@ -36,6 +36,7 @@ import time
 
 from http_server import HttpServer
 from morse_code import MorseCode
+from dcu3_rotator import Rotator
 
 upython = sys.implementation.name == 'micropython'
 
@@ -43,10 +44,8 @@ if upython:
     import network
     from machine import Pin
     import uasyncio as asyncio
-    from pico_rotator import get_rotator_bearing, set_rotator_bearing
 else:
     import asyncio
-    from windows_rotator import get_rotator_bearing, set_rotator_bearing
 
 
     class Machine(object):
@@ -103,6 +102,7 @@ DEFAULT_WEB_PORT = 80
 restart = False
 http_server = HttpServer(content_dir='content/')
 morse_code_sender = MorseCode(morse_led)
+rotator = Rotator()
 
 
 def read_config():
@@ -273,18 +273,18 @@ async def serve_serial_client(reader, writer):
                             if b == ord(';') or b == 13:  # command terminator
                                 command = ''.join(map(chr, buffer))
                                 if command == 'AI1;' or command == 'AI1\r':  # get direction
-                                    bearing = get_rotator_bearing()
+                                    bearing = rotator.get_rotator_bearing()
                                     response = ';{:03n}'.format(bearing)
                                     writer.write(response.encode('UTF-8'))
                                     await writer.drain()
                                 elif command.startswith('AP1') and command[-1] == '\r':  # set bearing and move rotator
                                     requested = safe_int(command[3:-1], -1)
                                     if 0 <= requested <= 360:
-                                        set_rotator_bearing(requested)
+                                        rotator.set_rotator_bearing(requested)
                                 elif command.startswith('AP1') and command[-1] == ';':  # set bearing
                                     requested = safe_int(command[3:-1], -1)
                                 elif command == 'AM1;' and 0 <= requested <= 360:  # move rotator
-                                    set_rotator_bearing(requested)
+                                    rotator.set_rotator_bearing(requested)
         writer.close()
         await writer.wait_closed()
         gc.collect()
@@ -566,7 +566,7 @@ async def api_bearing_callback(http, verb, args, reader, writer, request_headers
             requested_bearing = int(requested_bearing)
             if 0 <= requested_bearing <= 360:
                 print('sending rotor command')
-                bearing = set_rotator_bearing(requested_bearing)
+                bearing = rotator.set_rotator_bearing(requested_bearing)
                 http_status = 200
                 response = '{}\r\n'.format(bearing).encode('utf-8')
                 bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
@@ -579,7 +579,7 @@ async def api_bearing_callback(http, verb, args, reader, writer, request_headers
             response = 'uh oh: {}'.format(ex).encode('utf-8')
             bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     else:
-        bearing = get_rotator_bearing()
+        bearing = rotator.get_rotator_bearing()
         http_status = 200
         response = '{}\r\n'.format(bearing).encode('utf-8')
         bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
