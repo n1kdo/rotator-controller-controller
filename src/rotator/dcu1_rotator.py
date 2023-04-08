@@ -50,7 +50,7 @@ class Rotator:
         self.buffer = bytearray(16)
         self.last_bearing = Rotator.ERROR_UNKNOWN
         self.last_requested_bearing = Rotator.ERROR_UNKNOWN
-        self.serial_port = SerialPort(baudrate=Rotator.BAUD_RATE, timeout=0.05)
+        self.serial_port = SerialPort(baudrate=Rotator.BAUD_RATE, timeout=0)
         self.initialized = False
         self.serial_port_locked = False
 
@@ -60,7 +60,7 @@ class Rotator:
         self.initialized = True
 
     async def send_and_receive(self, message, timeout=0.05):
-        # flush receive buffer
+        # drain receive buffer
         while len(self.serial_port.read()) > 0:
             pass
         # send the message

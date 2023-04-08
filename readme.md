@@ -68,3 +68,10 @@ Electronic Design Files:
 
 * kicad/* -- Kicad 6 design files for schematic and PCB.
 
+## Other projects using this technology
+
+I used this same electronic design, and a lot of the same source code to make
+the [KPA-500 IOT Thing](https://github.com/n1kdo/KPA500-remote), a web interface and 
+KPA500-remote *host* for the Elecraft KPA-500 amplifier.
+
+n1kdo 2023-04-09
