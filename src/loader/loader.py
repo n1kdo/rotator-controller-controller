@@ -5,6 +5,7 @@ __copyright__ = 'Copyright 2022, J. B. Otterson N1KDO.'
 import os
 import pyboard
 import serial
+import sys
 from serial.tools.list_ports import comports
 BAUD_RATE = 115200
 
