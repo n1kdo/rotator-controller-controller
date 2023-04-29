@@ -55,7 +55,7 @@ class Rotator:
         self.serial_port_locked = False
 
     async def initialize(self):
-        await self.send_and_receive(b'so')  # ROTOR EZ disable Stuck mode, disable Coast mode. Jeff--reconfigure rotor!
+        await self.send_and_receive(b'so')  # ROTOR EZ disable Stuck mode, disable Coast mode.
         await self.send_and_receive(b';')
         self.initialized = True
 
@@ -74,24 +74,23 @@ class Rotator:
     async def get_rotator_bearing(self):
         if self.serial_port_locked:
             return Rotator.ERROR_BUSY
-        else:
-            self.serial_port_locked = True
-            try:
-                if not self.initialized:
-                    await self.initialize()
-                result = await self.send_and_receive(b'AI1;')
-                if len(result) == 0:
-                    self.last_bearing = Rotator.ERROR_NO_DATA
+        self.serial_port_locked = True
+        try:
+            if not self.initialized:
+                await self.initialize()
+            result = await self.send_and_receive(b'AI1;')
+            if len(result) == 0:
+                self.last_bearing = Rotator.ERROR_NO_DATA
+            else:
+                if result[0] == ';':
+                    self.last_bearing = int(result[1:])
                 else:
-                    if result[0] == ';':
-                        self.last_bearing = int(result[1:])
-                    else:
-                        self.last_bearing = Rotator.ERROR_BAD_DATA
-            except Exception as ex:
-                print(ex)
-                self.last_bearing = Rotator.ERROR_ASYNC
-            finally:
-                self.serial_port_locked = False
+                    self.last_bearing = Rotator.ERROR_BAD_DATA
+        except Exception as ex:
+            print(ex)
+            self.last_bearing = Rotator.ERROR_ASYNC
+        finally:
+            self.serial_port_locked = False
         return self.last_bearing
 
     async def set_rotator_bearing(self, bearing):
@@ -110,7 +109,7 @@ class Rotator:
                     await self.send_and_receive(b'AM1;')
                     self.last_requested_bearing = bearing
                 else:
-                    message = 'soAP1{:03n}\r'.format(int(bearing)).encode('utf-8')
+                    message = f'soAP1{int(bearing):03n}\r'.encode('utf-8')
                     await self.send_and_receive(message)
                 result = bearing
             except Exception as ex:

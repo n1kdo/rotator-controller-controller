@@ -44,19 +44,19 @@ def put_file(filename, target):
         filename = filename[:-1]
         try:
             target.fs_mkdir(filename)
-            print('created directory {}'.format(filename))
-        except Exception as e:
-            if 'EEXIST' not in str(e):
-                print('failed to create directory {}'.format(filename))
-                print(type(e), e)
+            print(f'created directory {filename}')
+        except Exception as exc:
+            if 'EEXIST' not in str(exc):
+                print(f'failed to create directory {filename}')
+                print(type(exc), exc)
     else:
         try:
             os.stat(src_file_name)
-            print('sending file {} '.format(filename), end='')
+            print(f'sending file {filename} ', end='')
             target.fs_put(src_file_name, filename, progress_callback=put_file_progress_callback)
             print()
         except OSError:
-            print('cannot find source file {}'.format(src_file_name))
+            print(f'cannot find source file {src_file_name}')
 
 
 def load_device(port):
@@ -98,9 +98,9 @@ def main():
 
     if picow_port is None:
         print('Could not identify Pico-W communications port.  Exiting.')
-        exit(1)
+        sys.exit(1)
 
-    print('\nAttempting to load device on port {}'.format(picow_port))
+    print(f'\nAttempting to load device on port {picow_port}')
     load_device(picow_port)
 
 

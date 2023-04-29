@@ -37,8 +37,7 @@ impl_name = sys.implementation.name
 def milliseconds():
     if impl_name == 'cpython':
         return int(time.time() * 1000)
-    else:
-        return time.ticks_ms()
+    return time.ticks_ms()
 
 
 class HttpServer:
@@ -107,35 +106,34 @@ class HttpServer:
             response = b'<html><body><p>404.  Means &quot;no got&quot;.</p></body></html>'
             http_status = 404
             return self.send_simple_response(writer, http_status, self.CT_TEXT_HTML, response), http_status
-        else:
-            extension = filename.split('.')[-1]
-            content_type = self.FILE_EXTENSION_TO_CONTENT_TYPE_MAP.get(extension)
-            if content_type is None:
-                content_type = self.FILE_EXTENSION_TO_CONTENT_TYPE_MAP.get('*')
-            http_status = 200
-            self.start_response(writer, 200, content_type, content_length)
-            try:
-                with open(filename, 'rb', self.BUFFER_SIZE) as infile:
-                    while True:
-                        buffer = infile.read(self.BUFFER_SIZE)
-                        writer.write(buffer)
-                        if len(buffer) < self.BUFFER_SIZE:
-                            break
-            except Exception as e:
-                print(type(e), e)
-            return content_length, http_status
+        extension = filename.split('.')[-1]
+        content_type = self.FILE_EXTENSION_TO_CONTENT_TYPE_MAP.get(extension)
+        if content_type is None:
+            content_type = self.FILE_EXTENSION_TO_CONTENT_TYPE_MAP.get('*')
+        http_status = 200
+        self.start_response(writer, 200, content_type, content_length)
+        try:
+            with open(filename, 'rb', self.BUFFER_SIZE) as infile:
+                while True:
+                    buffer = infile.read(self.BUFFER_SIZE)
+                    writer.write(buffer)
+                    if len(buffer) < self.BUFFER_SIZE:
+                        break
+        except Exception as exc:
+            print(type(exc), exc)
+        return content_length, http_status
 
     def start_response(self, writer, http_status=200, content_type=None, response_size=0, extra_headers=None):
         status_text = self.HTTP_STATUS_TEXT.get(http_status) or 'Confused'
         protocol = 'HTTP/1.0'
         writer.write('{} {} {}\r\n'.format(protocol, http_status, status_text).encode('utf-8'))
         if content_type is not None and len(content_type) > 0:
-            writer.write('Content-type: {}; charset=UTF-8\r\n'.format(content_type).encode('utf-8'))
+            writer.write(f'Content-type: {content_type}; charset=UTF-8\r\n'.encode('utf-8'))
         if response_size > 0:
-            writer.write('Content-length: {}\r\n'.format(response_size).encode('utf-8'))
+            writer.write(f'Content-length: {response_size}\r\n'.encode('utf-8'))
         if extra_headers is not None:
             for header in extra_headers:
-                writer.write('{}\r\n'.format(header).encode('utf-8'))
+                writer.write(f'{header}\r\n'.encode('utf-8'))
         writer.write(b'\r\n')
 
     def send_simple_response(self, writer, http_status=200, content_type=None, response=None, extra_headers=None):

@@ -78,14 +78,14 @@ class MorseCode:
             for morse_letter in msg:
                 blink_pattern = self.MORSE_PATTERNS.get(morse_letter)
                 if blink_pattern is None:
-                    print('Warning: no pattern for letter {}'.format(morse_letter))
+                    print(f'Warning: no pattern for letter {morse_letter}')
                     blink_pattern = self.MORSE_PATTERNS.get(' ')
-                blink_list = [elem for elem in blink_pattern]
+                blink_list = list(blink_pattern)
                 while len(blink_list) > 0:
-                    t = blink_list.pop(0)
-                    if t > 0:
+                    blink_time = blink_list.pop(0)
+                    if blink_time > 0:
                         # blink time is in milliseconds!, but data is in 10 msec
                         self.led.on()
-                        await asyncio.sleep(t/100)
+                        await asyncio.sleep(blink_time/100)
                         self.led.off()
                     await asyncio.sleep(self.MORSE_ESP / 100 if len(blink_list) > 0 else self.MORSE_LSP / 100)

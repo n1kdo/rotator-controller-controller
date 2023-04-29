@@ -74,4 +74,3 @@ class SerialPort:
 
     def flush(self):
         self.port.flush()
-
