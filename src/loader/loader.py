@@ -3,10 +3,10 @@ __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, J. B. Otterson N1KDO.'
 
 import os
-import pyboard
 import serial
 import sys
 from serial.tools.list_ports import comports
+import pyboard
 BAUD_RATE = 115200
 
 SRC_DIR = '../rotator/'
@@ -46,7 +46,7 @@ def put_file(filename, target):
         try:
             target.fs_mkdir(filename)
             print(f'created directory {filename}')
-        except Exception as exc:
+        except pyboard.PyboardError as exc:
             if 'EEXIST' not in str(exc):
                 print(f'failed to create directory {filename}')
                 print(type(exc), exc)

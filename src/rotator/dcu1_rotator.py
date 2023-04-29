@@ -26,6 +26,9 @@ OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISE
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
+# disable pylint import error
+# pylint: disable=E0401
+
 import sys
 from serialport import SerialPort
 impl_name = sys.implementation.name

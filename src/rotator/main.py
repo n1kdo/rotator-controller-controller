@@ -27,6 +27,9 @@ __copyright__ = 'Copyright 2022, J. B. Otterson N1KDO.'
 # OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 
+# disable pylint import error
+# pylint: disable=E0401
+
 import gc
 import json
 import os
@@ -73,7 +76,6 @@ else:
 
             def on(self):
                 self.state = 1
-                pass
 
             def off(self):
                 self.state = 0
@@ -171,7 +173,7 @@ def connect_to_network(config):
             try:
                 network.hostname(hostname)
             except ValueError:
-                print('hostname is still not supported on Pico W')
+                print('could not set hostname.')
 
         # wlan.ifconfig(('10.0.0.1', '255.255.255.0', '0.0.0.0', '0.0.0.0'))
 

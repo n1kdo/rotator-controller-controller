@@ -21,4 +21,4 @@ jobs:
         pip install pyserial
     - name: Analysing the code with pylint
       run: |
-        pylint --exit-zero --disable=C0114,C0115,C0116,C0301,R0912,R0913,R0915,R1702,W0613 --ignore=pyboard.py $(git ls-files '*.py')
+        pylint --exit-zero --disable=C0114,C0115,C0116,C0301,R0912,R0913,R0914,R0915,R1702,W0613 --ignore=pyboard.py $(git ls-files '*.py')

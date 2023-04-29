@@ -126,7 +126,7 @@ class HttpServer:
     def start_response(self, writer, http_status=200, content_type=None, response_size=0, extra_headers=None):
         status_text = self.HTTP_STATUS_TEXT.get(http_status) or 'Confused'
         protocol = 'HTTP/1.0'
-        writer.write('{} {} {}\r\n'.format(protocol, http_status, status_text).encode('utf-8'))
+        writer.write(f'{protocol} {http_status} {status_text}\r\n'.encode('utf-8'))
         if content_type is not None and len(content_type) > 0:
             writer.write(f'Content-type: {content_type}; charset=UTF-8\r\n'.encode('utf-8'))
         if response_size > 0:
@@ -144,10 +144,10 @@ class HttpServer:
         return content_length
 
     @classmethod
-    def unpack_args(cls, s):
+    def unpack_args(cls, value):
         args_dict = {}
-        if s is not None:
-            args_list = s.split('&')
+        if value is not None:
+            args_list = value.split('&')
             for arg in args_list:
                 arg_parts = arg.split('=')
                 if len(arg_parts) == 2:
@@ -160,7 +160,7 @@ class HttpServer:
         bytes_sent = 0
         partner = writer.get_extra_info('peername')[0]
         if self.verbosity >= 4:
-            print('\nweb client connected from {}'.format(partner))
+            print(f'\nweb client connected from {partner}')
         request_line = await reader.readline()
         request = request_line.decode().strip()
         if self.verbosity >= 4:
@@ -244,74 +244,8 @@ class HttpServer:
         elapsed = milliseconds() - t0
         if http_status == 200:
             if self.verbosity > 2:
-                print('{} {} {} {} {} ms'.format(partner, request, http_status, bytes_sent, elapsed))
+                print(f'{partner} {request} {http_status} {bytes_sent} {elapsed} ms')
         else:
             if self.verbosity >= 1:
-                print('{} {} {} {} {} ms'.format(partner, request, http_status, bytes_sent, elapsed))
+                print(f'{partner} {request} {http_status} {bytes_sent} {elapsed} ms')
         gc.collect()
-
-
-'''
-                elif target == '/api/clear_fault':
-                    kpa500.enqueue_command(b'^FLC;')
-                    response = b'ok\r\n'
-                    http_status = 200
-                    bytes_sent = self.send_simple_response(writer, http_status, self.CT_TEXT_TEXT, response)
-                elif target == '/api/set_band':
-                    band_name = args.get('band')
-                    band_number = kpa500.band_label_to_number(band_name)
-                    if band_number is not None:
-                        command = f'^BN{band_number:02d};'.encode()
-                        kpa500.enqueue_command(command)
-                        response = b'ok\r\n'
-                        http_status = 200
-                    else:
-                        response = b'bad band name parameter\r\n'
-                        http_status = 400
-                    bytes_sent = self.send_simple_response(writer, http_status, self.CT_TEXT_TEXT, response)
-                elif target == '/api/set_fan_speed':
-                    speed = safe_int(args.get('speed', -1))
-                    if 0 <= speed <= 6:
-                        command = f'^FC{speed};^FC;'.encode()
-                        kpa500.enqueue_command(command)
-                        response = b'ok\r\n'
-                        http_status = 200
-                    else:
-                        response = b'bad fan speed parameter\r\n'
-                        http_status = 400
-                    bytes_sent = self.send_simple_response(writer, http_status, self.CT_TEXT_TEXT, response)
-                elif target == '/api/set_operate':
-                    state = args.get('state')
-                    if state == '0' or state == '1':
-                        command = f'^OS{state};^OS;'.encode()
-                        kpa500.enqueue_command(command)
-                        response = b'ok\r\n'
-                        http_status = 200
-                    else:
-                        response = b'bad state parameter\r\n'
-                        http_status = 400
-                    bytes_sent = self.send_simple_response(writer, http_status, self.CT_TEXT_TEXT, response)
-                elif target == '/api/set_power':
-                    state = args.get('state')
-                    if state == '0' or state == '1':
-                        command = f'^ON{state};'.encode()
-                        kpa500.enqueue_command(command)
-                        response = b'ok\r\n'
-                        http_status = 200
-                    else:
-                        response = b'bad state parameter\r\n'
-                        http_status = 400
-                    bytes_sent = self.send_simple_response(writer, http_status, self.CT_TEXT_TEXT, response)
-                elif target == '/api/set_speaker_alarm':
-                    state = args.get('state')
-                    if state == '0' or state == '1':
-                        command = f'^SP{state};'.encode()
-                        kpa500.enqueue_command(command)
-                        response = b'ok\r\n'
-                        http_status = 200
-                    else:
-                        response = b'bad state parameter\r\n'
-                        http_status = 400
-                    bytes_sent = self.send_simple_response(writer, http_status, self.CT_TEXT_TEXT, response)
-
-'''

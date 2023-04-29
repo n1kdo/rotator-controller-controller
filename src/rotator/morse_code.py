@@ -26,6 +26,9 @@
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
+# disable pylint import error
+# pylint: disable=E0401
+
 import sys
 impl_name = sys.implementation.name
 if impl_name == 'cpython':
