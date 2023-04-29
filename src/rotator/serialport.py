@@ -25,14 +25,21 @@ OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISE
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
+# disable pylint import error
+# pylint: disable=E0401
+
 import sys
+
+impl_name = sys.implementation.name
+if impl_name == 'cpython':
+    import serial
+elif impl_name == 'micropython':
+    import machine
 
 
 class SerialPort:
     def __init__(self, name='', baudrate=19200, timeout=0.040):
-        impl_name = sys.implementation.name
         if impl_name == 'cpython':
-            import serial
             if name == '':
                 name = 'com1:'
             self.port = serial.Serial(port=name,
@@ -43,7 +50,6 @@ class SerialPort:
                                       timeout=timeout)
             # reliable at 0.040 for 4800
         elif impl_name == 'micropython':
-            import machine
             if name == '':
                 name = '0'
             timeout_msec = int(timeout * 1000)
@@ -56,7 +62,7 @@ class SerialPort:
                                      tx=machine.Pin(0),
                                      rx=machine.Pin(1))
         else:
-            raise RuntimeError('no support for {}.'.format(impl_name))
+            raise RuntimeError(f'no support for {impl_name}.')
 
     def close(self):
         self.port.close()
