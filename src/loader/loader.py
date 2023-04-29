@@ -22,8 +22,9 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
 import os
-import serial
 import sys
+
+import serial
 from serial.tools.list_ports import comports
 import pyboard
 BAUD_RATE = 115200

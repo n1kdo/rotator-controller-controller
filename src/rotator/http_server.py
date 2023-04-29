@@ -33,6 +33,9 @@ impl_name = sys.implementation.name
 
 
 def milliseconds():
+    # disable pylint no-member, time.ticks_ms() is only Micropython.
+    # pylint: disable=E1901
+
     if impl_name == 'cpython':
         return int(time.time() * 1000)
     return time.ticks_ms()
@@ -200,14 +203,13 @@ class HttpServer:
                     if header == b'\r\n':
                         # blank line at end of headers
                         break
-                    else:
-                        # process headers.  look for those we are interested in.
-                        parts = header.decode().strip().split(':', 1)
-                        request_headers[parts[0].strip().lower()] = parts[1].strip()
-                        if parts[0] == 'Content-Length':
-                            request_content_length = int(parts[1].strip())
-                        elif parts[0] == 'Content-Type':
-                            request_content_type = parts[1].strip()
+                    # process headers.  look for those we are interested in.
+                    parts = header.decode().strip().split(':', 1)
+                    request_headers[parts[0].strip().lower()] = parts[1].strip()
+                    if parts[0] == 'Content-Length':
+                        request_content_length = int(parts[1].strip())
+                    elif parts[0] == 'Content-Type':
+                        request_content_type = parts[1].strip()
 
                 args = {}
                 if verb == 'GET':
