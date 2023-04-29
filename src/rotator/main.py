@@ -130,6 +130,8 @@ def safe_int(value, default=-1):
 
 
 def milliseconds():
+    # disable pylint no-member, time.ticks_ms() is only Micropython.
+    # pylint: disable=E1101
     if upython:
         return time.ticks_ms()
     return int(time.time() * 1000)
@@ -273,7 +275,7 @@ async def serve_serial_client(reader, writer):
                             buffer.append(b)
                             if b == ord(';') or b == 13:  # command terminator
                                 command = ''.join(map(chr, buffer))
-                                if command == 'AI1;' or command == 'AI1\r':  # get direction
+                                if command in ('AI1;', 'AI1\r'):  # get direction
                                     bearing = await rotator.get_rotator_bearing()
                                     response = f';{bearing:03n}'
                                     writer.write(response.encode('UTF-8'))
@@ -361,12 +363,12 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
                 errors = True
         ap_mode_arg = args.get('ap_mode')
         if ap_mode_arg is not None:
-            ap_mode = True if ap_mode_arg == '1' else False
+            ap_mode = ap_mode_arg == '1'
             config['ap_mode'] = ap_mode
             dirty = True
         dhcp_arg = args.get('dhcp')
         if dhcp_arg is not None:
-            dhcp = True if dhcp_arg == 1 else False
+            dhcp = dhcp_arg == 1
             config['dhcp'] = dhcp
             dirty = True
         ip_address = args.get('ip_address')
