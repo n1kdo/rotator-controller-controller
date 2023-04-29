@@ -299,12 +299,14 @@ async def serve_serial_client(reader, writer):
     print('serial client disconnected, elapsed time {:6.3f} seconds'.format((tc - t0) / 1000.0))
 
 
+# noinspection PyUnusedLocal
 async def slash_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/'
     http_status = 301
     bytes_sent = http.send_simple_response(writer, http_status, None, None, ['Location: /rotator.html'])
     return bytes_sent, http_status
 
 
+# noinspection PyUnusedLocal
 async def api_config_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/api/config'
     if verb == 'GET':
         payload = read_config()
@@ -403,6 +405,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
     return bytes_sent, http_status
 
 
+# noinspection PyUnusedLocal
 async def api_get_files_callback(http, verb, args, reader, writer, request_headers=None):
     if verb == 'GET':
         payload = os.listdir(http.content_dir)
@@ -416,6 +419,7 @@ async def api_get_files_callback(http, verb, args, reader, writer, request_heade
     return bytes_sent, http_status
 
 
+# noinspection PyUnusedLocal
 async def api_upload_file_callback(http, verb, args, reader, writer, request_headers=None):
     if verb == 'POST':
         boundary = None
@@ -532,6 +536,7 @@ async def api_upload_file_callback(http, verb, args, reader, writer, request_hea
     return bytes_sent, http_status
 
 
+# noinspection PyUnusedLocal
 async def api_rename_file_callback(http, verb, args, reader, writer, request_headers=None):
     filename = args.get('filename')
     newname = args.get('newname')
@@ -556,6 +561,7 @@ async def api_rename_file_callback(http, verb, args, reader, writer, request_hea
     return bytes_sent, http_status
 
 
+# noinspection PyUnusedLocal
 async def api_restart_callback(http, verb, args, reader, writer, request_headers=None):
     global restart
     if upython:
@@ -571,6 +577,7 @@ async def api_restart_callback(http, verb, args, reader, writer, request_headers
 
 
 # rotator web actions
+# noinspection PyUnusedLocal
 async def api_bearing_callback(http, verb, args, reader, writer, request_headers=None):
     requested_bearing = args.get('set')
     if requested_bearing:

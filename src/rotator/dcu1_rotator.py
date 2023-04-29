@@ -45,7 +45,7 @@ class Rotator:
 
     def __init__(self):
         self.serial_port_locked = True
-        #self.primitive = True  # use two-command mode for NOT Rotor-EZ or Green Heron
+        # self.primitive = True  # use two-command mode for NOT Rotor-EZ or Green Heron
         self.primitive = False  # use one command to set direction and move (Rotor-EZ, Green Heron)
         self.buffer = bytearray(16)
         self.last_bearing = Rotator.ERROR_UNKNOWN
@@ -103,7 +103,7 @@ class Rotator:
                 if not self.initialized:
                     await self.initialize()
                 if self.primitive:
-                    # hygain set direction
+                    # Hygain DCU-3 set direction
                     # not expecting any response.
                     message = f'AP1{bearing:03n};'.encode('utf-8')
                     await self.send_and_receive(message)

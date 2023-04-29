@@ -32,10 +32,6 @@ import os
 import sys
 import time
 impl_name = sys.implementation.name
-if impl_name == 'cpython':
-    import asyncio
-else:
-    import uasyncio as asyncio
 
 
 def milliseconds():
