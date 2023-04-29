@@ -34,7 +34,7 @@ impl_name = sys.implementation.name
 
 def milliseconds():
     # disable pylint no-member, time.ticks_ms() is only Micropython.
-    # pylint: disable=E1901
+    # pylint: disable=E1101
 
     if impl_name == 'cpython':
         return int(time.time() * 1000)
