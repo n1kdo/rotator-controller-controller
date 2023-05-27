@@ -104,7 +104,7 @@ class HttpServer:
         except OSError:
             content_length = -1
         if content_length < 0:
-            response = b'<html><body><p>404.  Means &quot;no got&quot;.</p></body></html>'
+            response = b'<html><body><p>404 -- File not found.</p></body></html>'
             http_status = 404
             return self.send_simple_response(writer, http_status, self.CT_TEXT_HTML, response), http_status
         extension = filename.split('.')[-1]

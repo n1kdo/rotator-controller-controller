@@ -48,8 +48,8 @@ class Rotator:
 
     def __init__(self):
         self.serial_port_locked = True
-        # self.primitive = True  # use two-command mode for NOT Rotor-EZ or Green Heron
-        self.primitive = False  # use one command to set direction and move (Rotor-EZ, Green Heron)
+        self.primitive = True  # use two-command mode for NOT Rotor-EZ or Green Heron
+        # self.primitive = False  # use one command to set direction and move (Rotor-EZ, Green Heron)
         self.buffer = bytearray(16)
         self.last_bearing = Rotator.ERROR_UNKNOWN
         self.last_requested_bearing = Rotator.ERROR_UNKNOWN
@@ -58,7 +58,7 @@ class Rotator:
         self.serial_port_locked = False
 
     async def initialize(self):
-        await self.send_and_receive(b'so')  # ROTOR EZ disable Stuck mode, disable Coast mode.
+        #await self.send_and_receive(b'so')  # ROTOR EZ disable Stuck mode, disable Coast mode.
         await self.send_and_receive(b';')
         self.initialized = True
 
@@ -112,7 +112,7 @@ class Rotator:
                     await self.send_and_receive(b'AM1;')
                     self.last_requested_bearing = bearing
                 else:
-                    message = f'soAP1{int(bearing):03n}\r'.encode('utf-8')
+                    message = f'AP1{int(bearing):03n}\r'.encode('utf-8')
                     await self.send_and_receive(message)
                 result = bearing
             except Exception as ex:
