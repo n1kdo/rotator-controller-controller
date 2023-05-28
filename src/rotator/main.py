@@ -44,6 +44,15 @@ if upython:
     import network
     from machine import Pin
     import uasyncio as asyncio
+    network_status_map = {
+        network.STAT_IDLE: 'no connection and no activity',  # 0
+        network.STAT_CONNECTING: 'connecting in progress',  # 1
+        network.STAT_CONNECTING+1: 'connected no IP address',  # 2, this is undefined, but returned.
+        network.STAT_GOT_IP: 'connection successful',  # 3
+        network.STAT_WRONG_PASSWORD: 'failed due to incorrect password',  # -3
+        network.STAT_NO_AP_FOUND: 'failed because no access point replied',  # -2
+        network.STAT_CONNECT_FAIL: 'failed due to other problems',  # -1
+        }
 else:
     import asyncio
 
@@ -200,6 +209,7 @@ def connect_to_network(config):
         hostname = config.get('hostname')
         if hostname is not None:
             try:
+                print(f'setting hostname {hostname}')
                 network.hostname(hostname)
             except ValueError:
                 print('hostname is still not supported on Pico W')
@@ -211,7 +221,7 @@ def connect_to_network(config):
             gateway = config.get('gateway')
             dns_server = config.get('dns_server')
             if ip_address is not None and netmask is not None and gateway is not None and dns_server is not None:
-                print('setting up static IP')
+                print('configuring network with static IP')
                 wlan.ifconfig((ip_address, netmask, gateway, dns_server))
             else:
                 print('cannot use static IP, data is missing, configuring network with DHCP')
@@ -221,27 +231,31 @@ def connect_to_network(config):
             # wlan.ifconfig('dhcp')  #  this does not work.  network does not come up.  no errors, either.
 
         wlan.active(True)
-        wlan.connect(ssid, secret)
         max_wait = 10
+        wl_status = wlan.status()
+        print('connecting...')
+        wlan.connect(ssid, secret)
         while max_wait > 0:
-            status = wlan.status()
-            if status < 0 or status >= 3:
+            wl_status = wlan.status()
+            st = network_status_map.get(wl_status) or 'undefined'
+            print(f'network status: {wl_status} {st}')
+            if wl_status < 0 or wl_status >= 3:
                 break
             max_wait -= 1
-            print(f'Waiting for connection to come up, status={status}')
             time.sleep(1)
-        if wlan.status() != network.STAT_GOT_IP:
+        if wl_status != network.STAT_GOT_IP:
             morse_code_sender.set_message('ERR')
             # return None
-            raise RuntimeError('Network connection failed')
+            raise RuntimeError(f'Network connection failed, status={wl_status}')
 
-    status = wlan.ifconfig()
-    ip_address = status[0]
+    wl_config = wlan.ifconfig()
+    ip_address = wl_config[0]
+    netmask = wl_config[1]
     message = f'AP {ip_address} ' if access_point_mode else f'{ip_address} '
     message = message.replace('.', ' ')
     morse_code_sender.set_message(message)
     print(message)
-    return ip_address
+    return ip_address, netmask
 
 
 async def serve_serial_client(reader, writer):
@@ -623,7 +637,7 @@ async def main():
     ap_mode = config.get('ap_mode') or False
     if upython:
         try:
-            ip_address = connect_to_network(config)
+            ip_address, netmask = connect_to_network(config)
             connected = ip_address is not None
         except Exception as ex:
             connected = False

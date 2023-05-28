@@ -88,6 +88,7 @@ class Rotator:
                 if result[0] == ';':
                     self.last_bearing = int(result[1:])
                 else:
+                    print(f'unexpected result: "{result}"')
                     self.last_bearing = Rotator.ERROR_BAD_DATA
         except Exception as ex:
             print(ex)

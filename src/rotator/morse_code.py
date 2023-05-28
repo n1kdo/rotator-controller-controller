@@ -60,8 +60,9 @@ class MorseCode:
         'E': (MORSE_DIT, ),
         'H': (MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DIT),
         'I': (MORSE_DIT, MORSE_DIT),
-        #  'O': (MORSE_DAH, MORSE_DAH, MORSE_DAH),
         #  'N': (MORSE_DAH, MORSE_DIT),
+        #  'O': (MORSE_DAH, MORSE_DAH, MORSE_DAH),
+        'P': (MORSE_DIT, MORSE_DAH, MORSE_DAH, MORSE_DIT),
         'R': (MORSE_DIT, MORSE_DAH, MORSE_DIT),
         #  'S': (MORSE_DIT, MORSE_DIT, MORSE_DIT),
     }
