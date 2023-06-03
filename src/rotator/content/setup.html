@@ -191,7 +191,6 @@
         if ((hostname.length < 1) || (hostname.length > 16) || (/\s/.test(hostname))) {
             alert("Invalid hostname")
         }
-
         // should validate static IP parameters here
         if (!dhcp) {
             let ip_addr_regex =/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/;
@@ -307,7 +306,7 @@
                 <input type="checkbox" id="dhcp_input" onchange="dhcp_change()"/>
             </p>
             <p>
-                <label for="hostname">Hostname:</label>
+                <label for="hostname_input">Hostname:</label>
                 <input type="text" id="hostname_input" maxlength="64">
             </p>
             <p>
