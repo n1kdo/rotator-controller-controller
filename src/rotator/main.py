@@ -41,6 +41,9 @@ import n1mm_udp
 
 upython = sys.implementation.name == 'micropython'
 
+# disable pylint import error
+# pylint: disable=E0401
+
 if upython:
     import network
     from machine import Pin
@@ -123,12 +126,24 @@ rotator = Rotator()
 
 
 def read_config():
-    config = {}
     try:
         with open(CONFIG_FILE, 'r') as config_file:
             config = json.load(config_file)
     except Exception as ex:
-        print('failed to load configuration!', type(ex), ex)
+        print('failed to load configuration, using default...', type(ex), ex)
+        config = {
+            'SSID': 'set your SSID here',
+            'secret': 'secret', 
+            'dhcp': True,
+            'ip_address': '192.168.1.73',
+            'netmask': '255.255.255.0',
+            'gateway': '192.168.1.1',
+            'dns_server': '8.8.8.8',
+            'hostname': 'rotator',
+            'n1mm': False,
+            'tcp_port': '73',
+            'web_port': '80',
+        }
     return config
 
 
