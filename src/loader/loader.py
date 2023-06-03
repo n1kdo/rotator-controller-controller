@@ -37,6 +37,7 @@ FILES_LIST = [
     'http_server.py',
     'main.py',
     'morse_code.py',
+    'n1mm_udp.py',
     'serialport.py',
     'content/compass-background.png',
     'content/favicon.ico',

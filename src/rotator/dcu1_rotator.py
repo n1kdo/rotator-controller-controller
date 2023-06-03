@@ -58,8 +58,8 @@ class Rotator:
         self.serial_port_locked = False
 
     async def initialize(self):
-        #await self.send_and_receive(b'so')  # ROTOR EZ disable Stuck mode, disable Coast mode.
-        await self.send_and_receive(b';')
+        # await self.send_and_receive(b'so')  # ROTOR EZ disable Stuck mode, disable Coast mode.
+        await self.send_and_receive(b';')  # STOP
         self.initialized = True
 
     async def send_and_receive(self, message, timeout=0.05):
@@ -75,6 +75,10 @@ class Rotator:
         return self.buffer[:bytes_received].decode()
 
     async def get_rotator_bearing(self):
+        count = 0
+        while self.serial_port_locked and count < 10:
+            count += 1
+            await asyncio.sleep(0.50)
         if self.serial_port_locked:
             return Rotator.ERROR_BUSY
         self.serial_port_locked = True
@@ -98,6 +102,11 @@ class Rotator:
         return self.last_bearing
 
     async def set_rotator_bearing(self, bearing):
+        locked_count = 0
+        while self.serial_port_locked and locked_count < 10:
+            locked_count += 1
+            print('busy')
+            await asyncio.sleep(.050)
         if self.serial_port_locked:
             result = Rotator.ERROR_BUSY
         else:

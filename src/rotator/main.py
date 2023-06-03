@@ -37,6 +37,7 @@ import time
 from http_server import HttpServer
 from morse_code import MorseCode
 from dcu1_rotator import Rotator
+import n1mm_udp
 
 upython = sys.implementation.name == 'micropython'
 
@@ -55,6 +56,7 @@ if upython:
         }
 else:
     import asyncio
+    import socket
 
 
     class Machine:
@@ -109,6 +111,9 @@ DEFAULT_SECRET = 'NorthSouth'
 DEFAULT_SSID = 'Rotator'
 DEFAULT_TCP_PORT = 73
 DEFAULT_WEB_PORT = 80
+
+N1MM_ROTOR_BROADCAST_PORT = 12040
+N1MM_BROADCAST_FROM_ROTOR_PORT = 13010
 
 # globals
 restart = False
@@ -380,10 +385,19 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
             ap_mode = ap_mode_arg == '1'
             config['ap_mode'] = ap_mode
             dirty = True
+        n1mm_arg = args.get('n1mm')
+        if n1mm_arg is not None:
+            n1mm = n1mm_arg == 1
+            config['n1mm'] = n1mm
+            dirty = True
         dhcp_arg = args.get('dhcp')
         if dhcp_arg is not None:
             dhcp = dhcp_arg == 1
             config['dhcp'] = dhcp
+            dirty = True
+        hostname = args.get('hostname')
+        if hostname is not None:
+            config['hostname'] = hostname
             dirty = True
         ip_address = args.get('ip_address')
         if ip_address is not None:
@@ -642,12 +656,32 @@ async def main():
         except Exception as ex:
             connected = False
             print(type(ex), ex)
+    else:
+        ip_address = socket.gethostbyname_ex(socket.gethostname())[2][-1]
+        netmask = '255.255.255.0'
 
     if connected:
         print(f'Starting web service on port {web_port}')
         asyncio.create_task(asyncio.start_server(http_server.serve_http_client, '0.0.0.0', web_port))
         print(f'Starting tcp service on port {tcp_port}')
         asyncio.create_task(asyncio.start_server(serve_serial_client, '0.0.0.0', tcp_port))
+
+        n1mm_mode = config.get('n1mm')
+        if n1mm_mode:
+            hostname = config.get('hostname')
+            broadcast_address = n1mm_udp.calculate_broadcast_address(ip_address, netmask)
+            print(f'Starting rotor position broadcasts for N1MM on port {N1MM_BROADCAST_FROM_ROTOR_PORT}')
+            send_broadcast_from_n1mm = n1mm_udp.SendBroadcastFromN1MM(broadcast_address,
+                                                                      target_port=N1MM_BROADCAST_FROM_ROTOR_PORT,
+                                                                      rotator=rotator,
+                                                                      my_name=hostname)
+            print(f'Starting listener for UDP position broadcasts from N1MM on port {N1MM_ROTOR_BROADCAST_PORT}')
+            receive_broadcast_from_n1mm = n1mm_udp.ReceiveBroadcastsFromN1MM(ip_address,
+                                                                             receive_port=N1MM_ROTOR_BROADCAST_PORT,
+                                                                             rotator=rotator,
+                                                                             my_name=hostname)
+            n1mm_sender = asyncio.create_task(send_broadcast_from_n1mm.send_datagrams())
+            n1mm_receiver = asyncio.create_task(receive_broadcast_from_n1mm.wait_for_datagram())
     else:
         print('no network connection')
 
