@@ -1,7 +1,8 @@
 # Raspberry Pi Pico W IOT Antenna Rotator Controller Controller
 
 This project uses a Raspberry Pi Pico W to internet-enable an antenna 
-rotator controller that has a RS-232 interface.
+rotator controller that has an RS-232 interface.  The software presents a web interface 
+to the rotator, and also allows direct network control by N1MM+ and other software.
 
 ![](rotator_controller_controller.png)
 
@@ -9,6 +10,8 @@ I used it for my Hy-Gain Ham IV rotator.  My Hy-Gain rotator control box has bee
 control with the addition of a Ham Supply/Idiom Press *Rotor-EZ* module.  I further modified the rotator
 control box to provide +5 Volts on Pin 1 (carrier detect) of the DE-9S RS-232 interface.  This allows the 
 Raspberry Pi Pico W to rob power from the rotator control box.
+
+See the [Documentation](documentation.md) for details
 
 There is very little external hardware required.  The most important other piece is a MAX3232 3.3 volt 
 RS-232 level converter.  The MAX3232 is used to interface the 3.3 volt logic of the Raspberry Pi Pico W to
@@ -50,14 +53,15 @@ proper location, but this can be worked around by using the "upload" feature in 
 
 Important files:
 
-* src/pico-w/main.py -- the main Python application
-* src/pico-w/pico_rotator.py -- a Python module that queries and commands the rotator controller on the Pico-W
-* src/pico-w/windows_rotator.py -- a Python module that queries and commands the rotator controller on Linux and
-  Windows.  Used for development and testing
-* src/pico-w/content/rotator.html -- the rotator control web page
-* src/pico-w/content/setup.html -- the setup web page
-* src/pico-w/content/files.html -- the file upload/download web page
-* src/pico-w/data/config.json -- the configuration file.  automatically generated on first use if not present.
+* src/rotator/main.py -- the main Python application
+* src/rotator/dcu1_rotator.py -- a Python module that queries and commands the rotator controller
+* src/rotator/http_server.py -- a Python module that implements the web server
+* src/rotator/morse_code.py -- a Python module that implements the morse code sender
+* src/rotator/n1mm_udp.py -- a Python module that implements UDP send/receive to/from N1MM+
+* src/rotator/content/rotator.html -- the rotator control web page
+* src/rotator/content/setup.html -- the setup web page
+* src/rotator/content/files.html -- the file upload/download web page
+* src/rotator/data/config.json -- the configuration file.  automatically generated on first use if not present.
 
 Other Stuff:
 
@@ -74,4 +78,4 @@ I used this same electronic design, and a lot of the same source code to make
 the [KPA-500 IOT Thing](https://github.com/n1kdo/KPA500-remote), a web interface and 
 KPA500-remote *host* for the Elecraft KPA-500 amplifier.
 
-n1kdo 2023-04-09
+n1kdo 2023-08-11
