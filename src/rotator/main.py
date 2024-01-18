@@ -575,6 +575,24 @@ async def api_upload_file_callback(http, verb, args, reader, writer, request_hea
 
 
 # noinspection PyUnusedLocal
+async def api_remove_file_callback(http, verb, args, reader, writer, request_headers=None):
+    filename = args.get('filename')
+    if valid_filename(filename) and filename not in DANGER_ZONE_FILE_NAMES:
+        filename = http.content_dir + filename
+        try:
+            os.remove(filename)
+            http_status = 200
+            response = b'removed\r\n'
+        except OSError as ose:
+            http_status = 409
+            response = str(ose).encode('utf-8')
+    else:
+        http_status = 409
+        response = b'bad file name\r\n'
+    bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
+
+
+# noinspection PyUnusedLocal
 async def api_rename_file_callback(http, verb, args, reader, writer, request_headers=None):
     filename = args.get('filename')
     newname = args.get('newname')
@@ -651,6 +669,7 @@ async def main():
     http_server.add_uri_callback('/api/config', api_config_callback)
     http_server.add_uri_callback('/api/get_files', api_get_files_callback)
     http_server.add_uri_callback('/api/upload_file', api_upload_file_callback)
+    http_server.add_uri_callback('/api/remove_file', api_remove_file_callback)
     http_server.add_uri_callback('/api/rename_file', api_rename_file_callback)
     http_server.add_uri_callback('/api/restart', api_restart_callback)
     # rotator specific

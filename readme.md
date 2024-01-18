@@ -19,8 +19,8 @@ the RS-232 levels required by the antenna rotator control box.
 
 ## Installing MicroPython on your Pico-W
 
-1. Download the latest "nightly" build of MicroPython from https://micropython.org/download/rp2-pico-w/ -- it
-   will have a name similar to `v1.19.1-409-g0e8c2204d (2022-09-14) .uf2`
+1. Download the latest stable build of [Pico W MicroPython](https://micropython.org/download/RPI_PICO_W/). 
+   [This is the direct link](https://micropython.org/resources/firmware/RPI_PICO_W-20230426-v1.20.0.uf2).
 2. Connect a micro-USB cable to your PC.  Hold down the white "BOOTSEL" button on the Pico-W, and insert the
    micro-USB cable into your Pico-W.
 3. The Pico-W should appear as a USB storage device on your computer.  On mine, it shows up as "RPI-RP2 (F:)".
