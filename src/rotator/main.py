@@ -35,7 +35,12 @@ import sys
 import time
 import micro_logging as logging
 
-from http_server import HttpServer
+from http_server import (HttpServer,
+                         api_rename_file_callback,
+                         api_remove_file_callback,
+                         api_upload_file_callback,
+                         api_get_files_callback,
+                         HTTP_VERB_GET, HTTP_VERB_POST)
 from morse_code import MorseCode
 from dcu1_rotator import Rotator
 import n1mm_udp
@@ -337,19 +342,19 @@ async def serve_serial_client(reader, writer):
 # noinspection PyUnusedLocal
 async def slash_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/'
     http_status = 301
-    bytes_sent = http.send_simple_response(writer, http_status, None, None, ['Location: /rotator.html'])
+    bytes_sent = await http.send_simple_response(writer, http_status, None, None, ['Location: /rotator.html'])
     return bytes_sent, http_status
 
 
 # noinspection PyUnusedLocal
 async def api_config_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/api/config'
-    if verb == 'GET':
+    if verb == HTTP_VERB_GET:
         payload = read_config()
         # payload.pop('secret')  # do not return the secret
         response = json.dumps(payload).encode('utf-8')
         http_status = 200
-        bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
-    elif verb == 'POST':
+        bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
+    elif verb == HTTP_VERB_POST:
         config = read_config()
         dirty = False
         errors = False
@@ -437,188 +442,15 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
                 save_config(config)
             response = b'ok\r\n'
             http_status = 200
-            bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+            bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
         else:
             response = b'parameter out of range\r\n'
             http_status = 400
-            bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+            bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     else:
         response = b'GET or PUT only.'
         http_status = 400
-        bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
-    return bytes_sent, http_status
-
-
-# noinspection PyUnusedLocal
-async def api_get_files_callback(http, verb, args, reader, writer, request_headers=None):
-    if verb == 'GET':
-        payload = os.listdir(http.content_dir)
-        response = json.dumps(payload).encode('utf-8')
-        http_status = 200
-        bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
-    else:
-        http_status = 400
-        response = b'only GET permitted'
-        bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
-    return bytes_sent, http_status
-
-
-# noinspection PyUnusedLocal
-async def api_upload_file_callback(http, verb, args, reader, writer, request_headers=None):
-    if verb == 'POST':
-        boundary = None
-        request_content_type = request_headers.get('Content-Type') or ''
-        if ';' in request_content_type:
-            pieces = request_content_type.split(';')
-            request_content_type = pieces[0]
-            boundary = pieces[1].strip()
-            if boundary.startswith('boundary='):
-                boundary = boundary[9:]
-        if request_content_type != http.CT_MULTIPART_FORM or boundary is None:
-            response = b'multipart boundary or content type error'
-            http_status = 400
-        else:
-            response = b'unhandled problem'
-            http_status = 500
-            request_content_length = int(request_headers.get('Content-Length') or '0')
-            remaining_content_length = request_content_length
-            start_boundary = http.HYPHENS + boundary
-            end_boundary = start_boundary + http.HYPHENS
-            state = http.MP_START_BOUND
-            filename = None
-            output_file = None
-            writing_file = False
-            more_bytes = True
-            leftover_bytes = []
-            while more_bytes:
-                buffer = await reader.read(BUFFER_SIZE)
-                remaining_content_length -= len(buffer)
-                if remaining_content_length == 0:  # < BUFFER_SIZE:
-                    more_bytes = False
-                if len(leftover_bytes) != 0:
-                    buffer = leftover_bytes + buffer
-                    leftover_bytes = []
-                start = 0
-                while start < len(buffer):
-                    if state == http.MP_DATA:
-                        if not output_file:
-                            output_file = open(http.content_dir + 'uploaded_' + filename, 'wb')
-                            writing_file = True
-                        end = len(buffer)
-                        for i in range(start, len(buffer) - 3):
-                            if buffer[i] == 13 and buffer[i + 1] == 10 and buffer[i + 2] == 45 and \
-                                    buffer[i + 3] == 45:
-                                end = i
-                                writing_file = False
-                                break
-                        if end == BUFFER_SIZE:
-                            if buffer[-1] == 13:
-                                leftover_bytes = buffer[-1:]
-                                buffer = buffer[:-1]
-                                end -= 1
-                            elif buffer[-2] == 13 and buffer[-1] == 10:
-                                leftover_bytes = buffer[-2:]
-                                buffer = buffer[:-2]
-                                end -= 2
-                            elif buffer[-3] == 13 and buffer[-2] == 10 and buffer[-1] == 45:
-                                leftover_bytes = buffer[-3:]
-                                buffer = buffer[:-3]
-                                end -= 3
-                        output_file.write(buffer[start:end])
-                        if not writing_file:
-                            # logging.info('closing file')
-                            state = http.MP_END_BOUND
-                            output_file.close()
-                            output_file = None
-                            response = f'Uploaded {filename} successfully'.encode('utf-8')
-                            http_status = 201
-                        start = end + 2
-                    else:  # must be reading headers or boundary
-                        line = ''
-                        for i in range(start, len(buffer) - 1):
-                            if buffer[i] == 13 and buffer[i + 1] == 10:
-                                line = buffer[start:i].decode('utf-8')
-                                start = i + 2
-                                break
-                        if state == http.MP_START_BOUND:
-                            if line == start_boundary:
-                                state = http.MP_HEADERS
-                            else:
-                                logging.info('expecting start boundary, got ' + line,
-                                             'main:api_upload_file_callback')
-                        elif state == http.MP_HEADERS:
-                            if len(line) == 0:
-                                state = http.MP_DATA
-                            elif line.startswith('Content-Disposition:'):
-                                pieces = line.split(';')
-                                fn = pieces[2].strip()
-                                if fn.startswith('filename="'):
-                                    filename = fn[10:-1]
-                                    if not valid_filename(filename):
-                                        response = b'bad filename'
-                                        http_status = 500
-                                        more_bytes = False
-                                        start = len(buffer)
-                            # else:
-                            #     logging.info('processing headers, got ' + line)
-                        elif state == http.MP_END_BOUND:
-                            if line == end_boundary:
-                                state = http.MP_START_BOUND
-                            else:
-                                logging.info('expecting end boundary, got ' + line,
-                                             'main:api_upload_file_callback')
-                        else:
-                            http_status = 500
-                            response = f'unmanaged state {state}'.encode('utf-8')
-        bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
-    else:
-        response = b'PUT only.'
-        http_status = 400
-        bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
-    return bytes_sent, http_status
-
-
-# noinspection PyUnusedLocal
-async def api_remove_file_callback(http, verb, args, reader, writer, request_headers=None):
-    filename = args.get('filename')
-    if valid_filename(filename) and filename not in DANGER_ZONE_FILE_NAMES:
-        filename = http.content_dir + filename
-        try:
-            os.remove(filename)
-            http_status = 200
-            response = b'removed\r\n'
-        except OSError as ose:
-            http_status = 409
-            response = str(ose).encode('utf-8')
-    else:
-        http_status = 409
-        response = b'bad file name\r\n'
-    bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
-    return bytes_sent, http_status
-
-
-# noinspection PyUnusedLocal
-async def api_rename_file_callback(http, verb, args, reader, writer, request_headers=None):
-    filename = args.get('filename')
-    newname = args.get('newname')
-    if valid_filename(filename) and valid_filename(newname):
-        filename = http.content_dir + filename
-        newname = http.content_dir + newname
-        try:
-            os.remove(newname)
-        except OSError:
-            pass  # swallow exception.
-        try:
-            os.rename(filename, newname)
-            http_status = 200
-            response = b'renamed\r\n'
-        except Exception as ose:
-            http_status = 409
-            response = str(ose).encode('utf-8')
-    else:
-        http_status = 409
-        response = b'bad file name'
-    bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
+        bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     return bytes_sent, http_status
 
 
@@ -629,11 +461,11 @@ async def api_restart_callback(http, verb, args, reader, writer, request_headers
         restart = True
         response = b'ok\r\n'
         http_status = 200
-        bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+        bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     else:
         http_status = 400
         response = b'not permitted except on PICO-W'
-        bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
+        bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     return bytes_sent, http_status
 
 
@@ -648,20 +480,20 @@ async def api_bearing_callback(http, verb, args, reader, writer, request_headers
                 bearing = await rotator.set_rotator_bearing(requested_bearing)
                 http_status = 200
                 response = f'{bearing}\r\n'.encode('utf-8')
-                bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+                bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
             else:
                 http_status = 400
                 response = b'parameter out of range\r\n'
-                bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+                bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
         except Exception as ex:
             http_status = 500
             response = f'uh oh: {ex}'.encode('utf-8')
-            bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+            bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     else:
         bearing = await rotator.get_rotator_bearing()
         http_status = 200
         response = f'{bearing}\r\n'.encode('utf-8')
-        bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+        bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     return bytes_sent, http_status
 
 
