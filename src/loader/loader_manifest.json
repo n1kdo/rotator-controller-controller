@@ -9,6 +9,7 @@
     "micro_logging.py",
     "morse_code.py",
     "n1mm_udp.py",
+    "picow_network.py",
     "serialport.py",
     "utils.py",
     "content/compass-background.png",

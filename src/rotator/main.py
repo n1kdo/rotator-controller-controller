@@ -40,10 +40,15 @@ from http_server import (HttpServer,
                          api_remove_file_callback,
                          api_upload_file_callback,
                          api_get_files_callback,
+                         valid_filename,
                          HTTP_VERB_GET, HTTP_VERB_POST)
+
 from morse_code import MorseCode
 from dcu1_rotator import Rotator
+from utils import milliseconds, safe_int
 import n1mm_udp
+
+from picow_network import PicowNetwork
 
 upython = sys.implementation.name == 'micropython'
 
@@ -123,10 +128,8 @@ N1MM_ROTOR_BROADCAST_PORT = 12040
 N1MM_BROADCAST_FROM_ROTOR_PORT = 13010
 
 # globals
-restart = False
-http_server = HttpServer(content_dir='content/')
-morse_code_sender = MorseCode(morse_led)
-rotator = Rotator()
+keep_running = True
+rotator = None
 
 
 def read_config():
@@ -155,133 +158,6 @@ def read_config():
 def save_config(config):
     with open(CONFIG_FILE, 'w') as config_file:
         json.dump(config, config_file)
-
-
-def safe_int(value, default=-1):
-    if isinstance(value, int):
-        return value
-    return int(value) if value.isdigit() else default
-
-
-def milliseconds():
-    # disable pylint no-member, time.ticks_ms() is only Micropython.
-    # pylint: disable=E1101
-    if upython:
-        return time.ticks_ms()
-    return int(time.time() * 1000)
-
-
-def valid_filename(filename):
-    if filename is None:
-        return False
-    match = re.match('^[a-zA-Z0-9](?:[a-zA-Z0-9._-]*[a-zA-Z0-9])?.[a-zA-Z0-9_-]+$', filename)
-    if match is None:
-        return False
-    if match.group(0) != filename:
-        return False
-    extension = filename.split('.')[-1].lower()
-    if HttpServer.FILE_EXTENSION_TO_CONTENT_TYPE_MAP.get(extension) is None:
-        return False
-    return True
-
-
-def connect_to_network(config):
-    network.country('US')
-    ssid = config.get('SSID') or ''
-    if len(ssid) == 0 or len(ssid) > 64:
-        ssid = DEFAULT_SSID
-    secret = config.get('secret') or ''
-    if len(secret) > 64:
-        secret = ''
-    access_point_mode = config.get('ap_mode') or False
-
-    if access_point_mode:
-        logging.info('Starting setup WLAN...', 'main:connect_to_network')
-        wlan = network.WLAN(network.AP_IF)
-        wlan.active(False)
-        wlan.config(pm=0xa11140)  # disable power save, this is a server.
-
-        hostname = config.get('hostname')
-        if hostname is not None:
-            try:
-                network.hostname(hostname)
-            except ValueError as exc:
-                logging.warning('could not set hostname.', 'main:connect_to_network', exc_info=exc)
-
-        # wlan.ifconfig(('10.0.0.1', '255.255.255.0', '0.0.0.0', '0.0.0.0'))
-
-        """
-        #define CYW43_AUTH_OPEN (0)                     ///< No authorisation required (open)
-        #define CYW43_AUTH_WPA_TKIP_PSK   (0x00200002)  ///< WPA authorisation
-        #define CYW43_AUTH_WPA2_AES_PSK   (0x00400004)  ///< WPA2 authorisation (preferred)
-        #define CYW43_AUTH_WPA2_MIXED_PSK (0x00400006)  ///< WPA2/WPA mixed authorisation
-        """
-        ssid = DEFAULT_SSID
-        secret = DEFAULT_SECRET
-        if len(secret) == 0:
-            security = 0
-        else:
-            security = 0x00400004  # CYW43_AUTH_WPA2_AES_PSK
-        wlan.config(ssid=ssid, key=secret, security=security)
-        wlan.active(True)
-        logging.info(wlan.active(), 'main:connect_to_network')
-        logging.info(f'ssid={wlan.config("ssid")}', 'main:connect_to_network')
-    else:
-        logging.info('Connecting to WLAN...', 'main:connect_to_network')
-        wlan = network.WLAN(network.STA_IF)
-        wlan.config(pm=0xa11140)  # disable power save, this is a server.
-
-        hostname = config.get('hostname')
-        if hostname is not None:
-            try:
-                logging.info(f'setting hostname {hostname}', 'main:connect_to_network')
-                network.hostname(hostname)
-            except ValueError:
-                logging.info('hostname is still not supported on Pico W', 'main:connect_to_network')
-
-        is_dhcp = config.get('dhcp') or True
-        if not is_dhcp:
-            ip_address = config.get('ip_address')
-            netmask = config.get('netmask')
-            gateway = config.get('gateway')
-            dns_server = config.get('dns_server')
-            if ip_address is not None and netmask is not None and gateway is not None and dns_server is not None:
-                logging.info('configuring network with static IP', 'main:connect_to_network')
-                wlan.ifconfig((ip_address, netmask, gateway, dns_server))
-            else:
-                logging.info('cannot use static IP, data is missing, configuring network with DHCP',
-                             'main:connect_to_network')
-                wlan.ifconfig('dhcp')
-        else:
-            logging.info('configuring network with DHCP', 'main:connect_to_network')
-            # wlan.ifconfig('dhcp')  #  this does not work.  network does not come up.  no errors, either.
-
-        wlan.active(True)
-        max_wait = 10
-        wl_status = wlan.status()
-        logging.info('connecting...', 'main:connect_to_network')
-        wlan.connect(ssid, secret)
-        while max_wait > 0:
-            wl_status = wlan.status()
-            st = network_status_map.get(wl_status) or 'undefined'
-            logging.info(f'network status: {wl_status} {st}', 'main:connect_to_network')
-            if wl_status < 0 or wl_status >= 3:
-                break
-            max_wait -= 1
-            time.sleep(1)
-        if wl_status != network.STAT_GOT_IP:
-            morse_code_sender.set_message('ERR')
-            # return None
-            raise RuntimeError(f'Network connection failed, status={wl_status}')
-
-    wl_config = wlan.ifconfig()
-    ip_address = wl_config[0]
-    netmask = wl_config[1]
-    message = f'AP {ip_address} ' if access_point_mode else f'{ip_address} '
-    message = message.replace('.', ' ')
-    morse_code_sender.set_message(message)
-    logging.info(message, 'main:connect_to_network')
-    return ip_address, netmask
 
 
 async def serve_serial_client(reader, writer):
@@ -456,9 +332,9 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
 
 # noinspection PyUnusedLocal
 async def api_restart_callback(http, verb, args, reader, writer, request_headers=None):
-    global restart
+    global keep_running
     if upython:
-        restart = True
+        keep_running = False
         response = b'ok\r\n'
         http_status = 200
         bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
@@ -498,19 +374,29 @@ async def api_bearing_callback(http, verb, args, reader, writer, request_headers
 
 
 async def main():
-    global restart
+    global keep_running, rotator
 
     config = read_config()
 
-    http_server.add_uri_callback('/', slash_callback)
-    http_server.add_uri_callback('/api/config', api_config_callback)
-    http_server.add_uri_callback('/api/get_files', api_get_files_callback)
-    http_server.add_uri_callback('/api/upload_file', api_upload_file_callback)
-    http_server.add_uri_callback('/api/remove_file', api_remove_file_callback)
-    http_server.add_uri_callback('/api/rename_file', api_rename_file_callback)
-    http_server.add_uri_callback('/api/restart', api_restart_callback)
+    http_server = HttpServer(content_dir='content/')
+    if upython:
+        picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET)
+        morse_code_sender = MorseCode(morse_led)
+    else:
+        picow_network = None
+        morse_code_sender = None
+
+    rotator = Rotator()
+
+    http_server.add_uri_callback(b'/', slash_callback)
+    http_server.add_uri_callback(b'/api/config', api_config_callback)
+    http_server.add_uri_callback(b'/api/get_files', api_get_files_callback)
+    http_server.add_uri_callback(b'/api/upload_file', api_upload_file_callback)
+    http_server.add_uri_callback(b'/api/remove_file', api_remove_file_callback)
+    http_server.add_uri_callback(b'/api/rename_file', api_rename_file_callback)
+    http_server.add_uri_callback(b'/api/restart', api_restart_callback)
     # rotator specific
-    http_server.add_uri_callback('/api/bearing', api_bearing_callback)
+    http_server.add_uri_callback(b'/api/bearing', api_bearing_callback)
 
     tcp_port = safe_int(config.get('tcp_port') or DEFAULT_TCP_PORT, DEFAULT_TCP_PORT)
     if tcp_port < 0 or tcp_port > 65535:
@@ -518,15 +404,16 @@ async def main():
     web_port = safe_int(config.get('web_port') or DEFAULT_WEB_PORT, DEFAULT_WEB_PORT)
     if web_port < 0 or web_port > 65535:
         web_port = DEFAULT_WEB_PORT
-    connected = True
-    ap_mode = config.get('ap_mode') or False
-    if upython:
-        try:
-            ip_address, netmask = connect_to_network(config)
-            connected = ip_address is not None
-        except Exception as ex:
-            connected = False
-            logging.exception('got exception in main', 'main:main', exc_info=ex)
+
+    if picow_network is not None:
+        connected = False
+        while not connected:
+            logging.info('waiting for picow network', 'main:main')
+            await asyncio.sleep(1)
+            connected = picow_network.is_connected()
+
+        ip_address = picow_network.get_ip_address()
+        netmask = picow_network.get_netmask()
     else:
         ip_address = socket.gethostbyname_ex(socket.gethostname())[2][-1]
         netmask = '255.255.255.0'
@@ -541,6 +428,7 @@ async def main():
         if n1mm_mode:
             hostname = config.get('hostname')
             broadcast_address = n1mm_udp.calculate_broadcast_address(ip_address, netmask)
+            logging.info(f'My broadcast address (to N1MM) is {broadcast_address}', 'main:main')
             logging.info(f'Starting rotor position broadcasts for N1MM on port {N1MM_BROADCAST_FROM_ROTOR_PORT}',
                          'main:main')
             send_broadcast_from_n1mm = n1mm_udp.SendBroadcastFromN1MM(broadcast_address,
@@ -561,25 +449,35 @@ async def main():
     if upython:
         asyncio.create_task(morse_code_sender.morse_sender())
 
+
     reset_button_pressed_count = 0
-    while True:
+    four_count = 0
+    last_message = ''
+    while keep_running:
         if upython:
             await asyncio.sleep(0.25)
+            four_count += 1
             pressed = reset_button.value() == 0
             if pressed:
                 reset_button_pressed_count += 1
-                if reset_button_pressed_count > 7:
-                    ap_mode = not ap_mode
-                    config['ap_mode'] = ap_mode
-                    save_config(config)
-                    restart = True
             else:
-                reset_button_pressed_count = 0
-
-            if restart:
-                machine.reset()
+                if reset_button_pressed_count > 0:
+                    reset_button_pressed_count -= 1
+            if reset_button_pressed_count > 7:
+                logging.info('reset button pressed', 'main:main')
+                ap_mode = not ap_mode
+                config['ap_mode'] = ap_mode
+                save_config(config)
+                keep_running = False
+            if four_count >= 3:  # check for new message every one second
+                if picow_network.get_message() != last_message:
+                    last_message = picow_network.get_message()
+                    morse_code_sender.set_message(last_message)
+                four_count = 0
         else:
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(10.0)
+    if upython:
+        machine.soft_reset()
 
 
 if __name__ == '__main__':

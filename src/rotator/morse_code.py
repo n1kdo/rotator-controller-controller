@@ -23,7 +23,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.3'
+__version__ = '0.9.4'
 
 # disable pylint import error
 # pylint: disable=E0401
@@ -81,7 +81,7 @@ class MorseCode:
         # do not send periods in Morse code, send a space instead.
         new_message = new_message.upper().replace('.', ' ')
         if self.message != new_message:
-            logging.info(f'new message "{new_message}")', 'morse_code:set_message')
+            logging.info(f'new message "{new_message}"', 'morse_code:set_message')
             self.message = new_message
 
     async def morse_sender(self):
