@@ -1,7 +1,6 @@
-
 __author__ = 'J. B. Otterson'
 __copyright__ = """
-Copyright 2023, J. B. Otterson N1KDO.
+Copyright 2023, 2025, J. B. Otterson N1KDO.
 Redistribution and use in source and binary forms, with or without modification, 
 are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice, 
@@ -20,6 +19,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
+__version__ = '0.9.0'
 
 import asyncio
 import micro_logging as logging
@@ -72,7 +72,7 @@ class SendBroadcastFromN1MM:
     async def send_datagrams(self):
         while self.run:
             bearing = await self.rotator.get_rotator_bearing()
-            message = f'{self.my_name} @ {bearing*10}'
+            message = f'{self.my_name} @ {bearing * 10}'
             self.send(message)
             await asyncio.sleep(1.50)
 
@@ -103,15 +103,18 @@ class ReceiveBroadcastsFromN1MM:
             try:
                 udp_data = self.receive_socket.recv(ROTOR_BROADCAST_BUF_SIZE)
                 message = udp_data.decode('utf-8')
+                logging.debug(f'message "{message}"',
+                             'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram')
                 rotor_name = get_element(message, 'rotor')
-                if rotor_name == self.my_name:
+                if rotor_name == self.my_name:  # or rotor_name == '*':
                     goazi = get_element(message, 'goazi')
                     bearing = int(float(goazi))
                     result = await self.rotator.set_rotator_bearing(bearing)
                     if result < 0:
                         logging.info(f'set_rotator_bearing result={result}',
                                      'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram')
-            except OSError as ose:
+            except OSError as exc:
+                # this is a timeout exception, no data was received, this is not abnormal.
                 pass
             except Exception as exc:
                 logging.exception('problem receiving datagram',
