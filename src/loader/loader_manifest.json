@@ -1,0 +1,20 @@
+{
+  "source_directory" : "../rotator/",
+  "files": [
+    "content/",
+    "data/",
+    "dcu1_rotator.py",
+    "http_server.py",
+    "main.py",
+    "morse_code.py",
+    "n1mm_udp.py",
+    "serialport.py",
+    "content/compass-background.png",
+    "content/favicon.ico",
+    "content/files.html",
+    "content/rotator.html",
+    "content/setup.html"],
+  "special_files": [
+    "data/config.json"
+  ]
+}
