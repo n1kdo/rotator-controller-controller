@@ -26,13 +26,14 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 
 # disable pylint import error
 # pylint: disable=E0401
-
+import asyncio
 import gc
 import json
 import os
 import re
 import sys
 import time
+import micro_logging as logging
 
 from http_server import HttpServer
 from morse_code import MorseCode
@@ -41,13 +42,11 @@ import n1mm_udp
 
 upython = sys.implementation.name == 'micropython'
 
-# disable pylint import error
-# pylint: disable=E0401
-
 if upython:
     import network
+    # disable pylint import error
+    # pylint: disable=E0401
     from machine import Pin
-    import uasyncio as asyncio
     network_status_map = {
         network.STAT_IDLE: 'no connection and no activity',  # 0
         network.STAT_CONNECTING: 'connecting in progress',  # 1
@@ -69,11 +68,11 @@ else:
 
         @staticmethod
         def soft_reset():
-            print('Machine.soft_reset()')
+            logging.info('Machine.soft_reset()', 'main:Machine.soft_reset')
 
         @staticmethod
         def reset():
-            print('Machine.reset()')
+            logging.info('Machine.reset()', 'main:Machine.reset')
 
         class Pin:
             OUT = 1
@@ -130,7 +129,8 @@ def read_config():
         with open(CONFIG_FILE, 'r') as config_file:
             config = json.load(config_file)
     except Exception as ex:
-        print('failed to load configuration, using default...', type(ex), ex)
+        logging.exception('failed to load configuration, using default...',
+                          'main:read_config', exc_info= ex)
         config = {
             'SSID': 'set your SSID here',
             'secret': 'secret', 
@@ -191,7 +191,7 @@ def connect_to_network(config):
     access_point_mode = config.get('ap_mode') or False
 
     if access_point_mode:
-        print('Starting setup WLAN...')
+        logging.info('Starting setup WLAN...', 'main:connect_to_network')
         wlan = network.WLAN(network.AP_IF)
         wlan.active(False)
         wlan.config(pm=0xa11140)  # disable power save, this is a server.
@@ -200,8 +200,8 @@ def connect_to_network(config):
         if hostname is not None:
             try:
                 network.hostname(hostname)
-            except ValueError:
-                print('could not set hostname.')
+            except ValueError as exc:
+                logging.warning('could not set hostname.', 'main:connect_to_network', exc_info=exc)
 
         # wlan.ifconfig(('10.0.0.1', '255.255.255.0', '0.0.0.0', '0.0.0.0'))
 
@@ -219,20 +219,20 @@ def connect_to_network(config):
             security = 0x00400004  # CYW43_AUTH_WPA2_AES_PSK
         wlan.config(ssid=ssid, key=secret, security=security)
         wlan.active(True)
-        print(wlan.active())
-        print(f'ssid={wlan.config("ssid")}')
+        logging.info(wlan.active(), 'main:connect_to_network')
+        logging.info(f'ssid={wlan.config("ssid")}', 'main:connect_to_network')
     else:
-        print('Connecting to WLAN...')
+        logging.info('Connecting to WLAN...', 'main:connect_to_network')
         wlan = network.WLAN(network.STA_IF)
         wlan.config(pm=0xa11140)  # disable power save, this is a server.
 
         hostname = config.get('hostname')
         if hostname is not None:
             try:
-                print(f'setting hostname {hostname}')
+                logging.info(f'setting hostname {hostname}', 'main:connect_to_network')
                 network.hostname(hostname)
             except ValueError:
-                print('hostname is still not supported on Pico W')
+                logging.info('hostname is still not supported on Pico W', 'main:connect_to_network')
 
         is_dhcp = config.get('dhcp') or True
         if not is_dhcp:
@@ -241,24 +241,25 @@ def connect_to_network(config):
             gateway = config.get('gateway')
             dns_server = config.get('dns_server')
             if ip_address is not None and netmask is not None and gateway is not None and dns_server is not None:
-                print('configuring network with static IP')
+                logging.info('configuring network with static IP', 'main:connect_to_network')
                 wlan.ifconfig((ip_address, netmask, gateway, dns_server))
             else:
-                print('cannot use static IP, data is missing, configuring network with DHCP')
+                logging.info('cannot use static IP, data is missing, configuring network with DHCP',
+                             'main:connect_to_network')
                 wlan.ifconfig('dhcp')
         else:
-            print('configuring network with DHCP')
+            logging.info('configuring network with DHCP', 'main:connect_to_network')
             # wlan.ifconfig('dhcp')  #  this does not work.  network does not come up.  no errors, either.
 
         wlan.active(True)
         max_wait = 10
         wl_status = wlan.status()
-        print('connecting...')
+        logging.info('connecting...', 'main:connect_to_network')
         wlan.connect(ssid, secret)
         while max_wait > 0:
             wl_status = wlan.status()
             st = network_status_map.get(wl_status) or 'undefined'
-            print(f'network status: {wl_status} {st}')
+            logging.info(f'network status: {wl_status} {st}', 'main:connect_to_network')
             if wl_status < 0 or wl_status >= 3:
                 break
             max_wait -= 1
@@ -274,7 +275,7 @@ def connect_to_network(config):
     message = f'AP {ip_address} ' if access_point_mode else f'{ip_address} '
     message = message.replace('.', ' ')
     morse_code_sender.set_message(message)
-    print(message)
+    logging.info(message, 'main:connect_to_network')
     return ip_address, netmask
 
 
@@ -291,7 +292,7 @@ async def serve_serial_client(reader, writer):
     requested = -1
     t0 = milliseconds()
     partner = writer.get_extra_info('peername')[0]
-    print(f'\nserial client connected from {partner}')
+    logging.info(f'serial client connected from {partner}', 'main:connect_to_network')
     buffer = []
 
     try:
@@ -326,10 +327,11 @@ async def serve_serial_client(reader, writer):
         await writer.wait_closed()
         gc.collect()
 
-    except Exception as ex:
-        print('exception in serve_serial_client:', type(ex), ex)
+    except Exception as exc:
+        logging.exception('exception in serve_serial_client:', 'main:serve_serial_client', exc_info=exc)
     tc = milliseconds()
-    print(f'serial client disconnected, elapsed time {(tc - t0) / 1000.0:6.3f} seconds')
+    logging.info(f'serial client disconnected, elapsed time {(tc - t0) / 1000.0:6.3f} seconds',
+                 'main:serve_serial_client')
 
 
 # noinspection PyUnusedLocal
@@ -524,7 +526,7 @@ async def api_upload_file_callback(http, verb, args, reader, writer, request_hea
                                 end -= 3
                         output_file.write(buffer[start:end])
                         if not writing_file:
-                            # print('closing file')
+                            # logging.info('closing file')
                             state = http.MP_END_BOUND
                             output_file.close()
                             output_file = None
@@ -542,7 +544,8 @@ async def api_upload_file_callback(http, verb, args, reader, writer, request_hea
                             if line == start_boundary:
                                 state = http.MP_HEADERS
                             else:
-                                print('expecting start boundary, got ' + line)
+                                logging.info('expecting start boundary, got ' + line,
+                                             'main:api_upload_file_callback')
                         elif state == http.MP_HEADERS:
                             if len(line) == 0:
                                 state = http.MP_DATA
@@ -557,12 +560,13 @@ async def api_upload_file_callback(http, verb, args, reader, writer, request_hea
                                         more_bytes = False
                                         start = len(buffer)
                             # else:
-                            #     print('processing headers, got ' + line)
+                            #     logging.info('processing headers, got ' + line)
                         elif state == http.MP_END_BOUND:
                             if line == end_boundary:
                                 state = http.MP_START_BOUND
                             else:
-                                print('expecting end boundary, got ' + line)
+                                logging.info('expecting end boundary, got ' + line,
+                                             'main:api_upload_file_callback')
                         else:
                             http_status = 500
                             response = f'unmanaged state {state}'.encode('utf-8')
@@ -690,27 +694,29 @@ async def main():
             connected = ip_address is not None
         except Exception as ex:
             connected = False
-            print(type(ex), ex)
+            logging.exception('got exception in main', 'main:main', exc_info=ex)
     else:
         ip_address = socket.gethostbyname_ex(socket.gethostname())[2][-1]
         netmask = '255.255.255.0'
 
     if connected:
-        print(f'Starting web service on port {web_port}')
+        logging.info(f'Starting web service on port {web_port}', 'main:main')
         asyncio.create_task(asyncio.start_server(http_server.serve_http_client, '0.0.0.0', web_port))
-        print(f'Starting tcp service on port {tcp_port}')
+        logging.info(f'Starting tcp service on port {tcp_port}', 'main:main')
         asyncio.create_task(asyncio.start_server(serve_serial_client, '0.0.0.0', tcp_port))
 
         n1mm_mode = config.get('n1mm')
         if n1mm_mode:
             hostname = config.get('hostname')
             broadcast_address = n1mm_udp.calculate_broadcast_address(ip_address, netmask)
-            print(f'Starting rotor position broadcasts for N1MM on port {N1MM_BROADCAST_FROM_ROTOR_PORT}')
+            logging.info(f'Starting rotor position broadcasts for N1MM on port {N1MM_BROADCAST_FROM_ROTOR_PORT}',
+                         'main:main')
             send_broadcast_from_n1mm = n1mm_udp.SendBroadcastFromN1MM(broadcast_address,
                                                                       target_port=N1MM_BROADCAST_FROM_ROTOR_PORT,
                                                                       rotator=rotator,
                                                                       my_name=hostname)
-            print(f'Starting listener for UDP position broadcasts from N1MM on port {N1MM_ROTOR_BROADCAST_PORT}')
+            logging.info(f'Starting listener for UDP position broadcasts from N1MM on port {N1MM_ROTOR_BROADCAST_PORT}',
+                         'main:main')
             receive_broadcast_from_n1mm = n1mm_udp.ReceiveBroadcastsFromN1MM(ip_address,
                                                                              receive_port=N1MM_ROTOR_BROADCAST_PORT,
                                                                              rotator=rotator,
@@ -718,7 +724,7 @@ async def main():
             n1mm_sender = asyncio.create_task(send_broadcast_from_n1mm.send_datagrams())
             n1mm_receiver = asyncio.create_task(receive_broadcast_from_n1mm.wait_for_datagram())
     else:
-        print('no network connection')
+        logging.info('no network connection', 'main:main')
 
     if upython:
         asyncio.create_task(morse_code_sender.morse_sender())
@@ -745,11 +751,13 @@ async def main():
 
 
 if __name__ == '__main__':
-    print('starting')
+    logging.loglevel = logging.INFO  # DEBUG
+    logging.info('starting', 'main:__main__')
+
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print('bye')
+        logging.info('bye', 'main:main')
     finally:
         asyncio.new_event_loop()
-    print('done')
+    logging.info('done', 'main:main')

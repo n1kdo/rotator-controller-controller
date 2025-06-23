@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = """
-Copyright 2022, J. B. Otterson N1KDO.
+Copyright 2022, 2024 J. B. Otterson N1KDO.
 Redistribution and use in source and binary forms, with or without modification, 
 are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice, 
@@ -23,6 +23,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
+__version__ = '0.9.3'
 
 # disable pylint import error
 # pylint: disable=E0401
@@ -31,8 +32,10 @@ import sys
 impl_name = sys.implementation.name
 if impl_name == 'cpython':
     import asyncio
+    import logging
 else:
     import uasyncio as asyncio
+    import micro_logging as logging
 
 
 class MorseCode:
@@ -57,37 +60,53 @@ class MorseCode:
         #  'B': (MORSE_DAH, MORSE_DIT, MORSE_DIT, MORSE_DIT),
         #  'C': (MORSE_DAH, MORSE_DIT, MORSE_DAH, MORSE_DIT),
         #  'D': (MORSE_DAH, MORSE_DIT, MORSE_DIT),
-        'E': (MORSE_DIT, ),
+        'E': (MORSE_DIT, ), # note that this comma is important, it is a tuple with one element
         'H': (MORSE_DIT, MORSE_DIT, MORSE_DIT, MORSE_DIT),
         'I': (MORSE_DIT, MORSE_DIT),
-        #  'N': (MORSE_DAH, MORSE_DIT),
-        #  'O': (MORSE_DAH, MORSE_DAH, MORSE_DAH),
+        'N': (MORSE_DAH, MORSE_DIT),
+        'O': (MORSE_DAH, MORSE_DAH, MORSE_DAH),
         'P': (MORSE_DIT, MORSE_DAH, MORSE_DAH, MORSE_DIT),
         'R': (MORSE_DIT, MORSE_DAH, MORSE_DIT),
-        #  'S': (MORSE_DIT, MORSE_DIT, MORSE_DIT),
+        'S': (MORSE_DIT, MORSE_DIT, MORSE_DIT),
+        'T': (MORSE_DAH, ),
     }
 
     def __init__(self, led):
         self.led = led
-        self.message = ''
+        self.message = 'START '  # TODO convert this to bytes
+        self.keep_running = True
+        asyncio.create_task(self.morse_sender())
 
-    def set_message(self, message):
-        self.message = message
+    def set_message(self, new_message):
+        # do not send periods in Morse code, send a space instead.
+        new_message = new_message.upper().replace('.', ' ')
+        if self.message != new_message:
+            logging.info(f'new message "{new_message}")', 'morse_code:set_message')
+            self.message = new_message
 
     async def morse_sender(self):
-        while True:
+        # these next several lines are optimizations for micropython, intended to eliminate dict lookups on self & etc.
+        morse_esp = self.MORSE_ESP
+        morse_lsp = self.MORSE_LSP
+        led = self.led
+        sleep = asyncio.sleep
+        patterns = self.MORSE_PATTERNS
+
+        while self.keep_running:
             msg = self.message
+            logging.debug(f'starting message "{msg}"', 'morse_code:morse_sender')
             for morse_letter in msg:
-                blink_pattern = self.MORSE_PATTERNS.get(morse_letter)
+                blink_pattern = patterns.get(morse_letter)
                 if blink_pattern is None:
-                    print(f'Warning: no pattern for letter {morse_letter}')
-                    blink_pattern = self.MORSE_PATTERNS.get(' ')
+                    logging.debug(f'[MORSE_CODE] Warning: no pattern for letter {morse_letter}',
+                                  'morse_code:morse_sender')
+                    blink_pattern = patterns.get(' ')
                 blink_list = list(blink_pattern)
                 while len(blink_list) > 0:
                     blink_time = blink_list.pop(0)
                     if blink_time > 0:
                         # blink time is in milliseconds!, but data is in 10 msec
-                        self.led.on()
-                        await asyncio.sleep(blink_time/100)
-                        self.led.off()
-                    await asyncio.sleep(self.MORSE_ESP / 100 if len(blink_list) > 0 else self.MORSE_LSP / 100)
+                        led.on()
+                        await sleep(blink_time/100)
+                        led.off()
+                    await sleep(morse_esp / 100 if len(blink_list) > 0 else morse_lsp / 100)

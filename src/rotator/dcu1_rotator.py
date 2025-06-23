@@ -6,7 +6,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = """
-Copyright 2022, J. B. Otterson N1KDO.
+Copyright 2022, 2025, J. B. Otterson N1KDO.
 Redistribution and use in source and binary forms, with or without modification, 
 are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice, 
@@ -25,17 +25,14 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
+__version__ = '0.9.0'
 
 # disable pylint import error
 # pylint: disable=E0401
 
-import sys
 from serialport import SerialPort
-impl_name = sys.implementation.name
-if impl_name == 'cpython':
-    import asyncio
-else:
-    import uasyncio as asyncio
+import asyncio
+import micro_logging as logging
 
 
 class Rotator:
@@ -46,10 +43,13 @@ class Rotator:
     ERROR_BUSY = -13
     ERROR_UNKNOWN = -99
 
-    def __init__(self):
+    def __init__(self, primitive=False):
+        """
+        set up rotator control class
+        :param primitive: set this true if rotor control is not Rotor-EZ or Green Heron
+        """
         self.serial_port_locked = True
-        self.primitive = True  # use two-command mode for NOT Rotor-EZ or Green Heron
-        # self.primitive = False  # use one command to set direction and move (Rotor-EZ, Green Heron)
+        self.primitive = primitive # set True to use two-command mode for NOT Rotor-EZ or Green Heron
         self.buffer = bytearray(16)
         self.last_bearing = Rotator.ERROR_UNKNOWN
         self.last_requested_bearing = Rotator.ERROR_UNKNOWN
@@ -58,7 +58,9 @@ class Rotator:
         self.serial_port_locked = False
 
     async def initialize(self):
-        # await self.send_and_receive(b'so')  # ROTOR EZ disable Stuck mode, disable Coast mode.
+        if not self.primitive:
+            pass
+            # await self.send_and_receive(b'so')  # ROTOR EZ disable Stuck mode, disable Coast mode.
         await self.send_and_receive(b';')  # STOP
         self.initialized = True
 
@@ -92,9 +94,10 @@ class Rotator:
                 if result[0] == ';':
                     self.last_bearing = int(result[1:])
                 else:
-                    print(f'unexpected result: "{result}"')
+                    logging.warning(f'unexpected result: "{result}"', 'dcu1_rotator:get_rotator_bearing')
                     self.last_bearing = Rotator.ERROR_BAD_DATA
         except Exception as ex:
+            logging.exception(f'exception in get_rotator_bearing', 'dcu1_rotator:get_rotator_bearing', exc_info=ex)
             print(ex)
             self.last_bearing = Rotator.ERROR_ASYNC
         finally:
@@ -105,7 +108,7 @@ class Rotator:
         locked_count = 0
         while self.serial_port_locked and locked_count < 10:
             locked_count += 1
-            print('busy')
+            logging.warning('busy', 'dcu1_rotator:set_rotator_bearing')
             await asyncio.sleep(.050)
         if self.serial_port_locked:
             result = Rotator.ERROR_BUSY

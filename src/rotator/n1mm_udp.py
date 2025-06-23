@@ -21,14 +21,9 @@ OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISE
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
+import asyncio
+import micro_logging as logging
 import socket
-import sys
-
-impl_name = sys.implementation.name
-if impl_name == 'cpython':
-    import asyncio
-else:
-    import uasyncio as asyncio
 
 ROTOR_BROADCAST_BUF_SIZE = 512
 
@@ -101,7 +96,7 @@ class ReceiveBroadcastsFromN1MM:
             self.receive_socket.bind(sockaddr)
             self.receive_socket.settimeout(0.001)
         except Exception as exc:
-            print(exc, type(exc))
+            logging.exception('problem setting up socket', 'n1mm_udp:ReceiveBroadcastsFromN1MM:init', exc_info=exc)
 
     async def wait_for_datagram(self):
         while self.run:
@@ -114,11 +109,13 @@ class ReceiveBroadcastsFromN1MM:
                     bearing = int(float(goazi))
                     result = await self.rotator.set_rotator_bearing(bearing)
                     if result < 0:
-                        print(f'set_rotator_bearing result={result}')
+                        logging.info(f'set_rotator_bearing result={result}',
+                                     'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram')
             except OSError as ose:
                 pass
             except Exception as exc:
-                print(exc, type(exc))
+                logging.exception('problem receiving datagram',
+                                  'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram', exc_info=exc)
             await asyncio.sleep(0.1)
         while self.run:
             pass

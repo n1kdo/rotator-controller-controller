@@ -24,6 +24,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
+__version__ = '0.9.0'
 
 # disable pylint import error
 # pylint: disable=E0401
@@ -31,10 +32,11 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 import sys
 
 impl_name = sys.implementation.name
-if impl_name == 'cpython':
-    import serial
-elif impl_name == 'micropython':
+upython = impl_name == 'micropython'
+if upython:
     import machine
+else:
+    import serial
 
 
 class SerialPort:
@@ -52,20 +54,41 @@ class SerialPort:
         elif impl_name == 'micropython':
             if name == '':
                 name = '0'
+            if name == '0':
+                tx_pin = machine.Pin(0)
+                rx_pin = machine.Pin(1)
+            elif name == '1':
+                tx_pin = machine.Pin(4)
+                rx_pin = machine.Pin(5)
             timeout_msec = int(timeout * 1000)
+            timeout_char_msec = int(timeout * 100)
             self.port = machine.UART(int(name),
                                      baudrate=baudrate,
                                      parity=None,
                                      stop=1,
                                      timeout=timeout_msec,
-                                     timeout_char=timeout_msec,
-                                     tx=machine.Pin(0),
-                                     rx=machine.Pin(1))
+                                     timeout_char=timeout_char_msec,
+                                     tx=tx_pin,
+                                     rx=rx_pin)
         else:
             raise RuntimeError(f'no support for {impl_name}.')
 
     def close(self):
         self.port.close()
+
+    def any(self):
+        if upython:
+            return self.port.any()
+        else:
+            x = self.port.in_waiting
+            return x != 0
+
+    def flush_input(self):
+        if upython:
+            if self.any():
+                _ = self.port.read()
+        else:
+            self.port.reset_input_buffer()
 
     def write(self, buffer):
         self.port.write(buffer)
