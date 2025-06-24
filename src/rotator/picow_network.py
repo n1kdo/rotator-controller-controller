@@ -248,9 +248,8 @@ class PicowNetwork:
         ifconfig = self._wlan.ifconfig()
         self._ip_address = ifconfig[0]
         self._netmask = ifconfig[1]
-        self._gateway = ifconfig[2] # TODO correct order?
+        self._gateway = ifconfig[2]
         self._dns_server = ifconfig[3]
-        #print(wl_config)
 
         ssid = self._wlan.config('ssid')
         if self._noisy:
