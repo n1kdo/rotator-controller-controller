@@ -11,7 +11,7 @@ control with the addition of a Ham Supply/Idiom Press *Rotor-EZ* module.  I furt
 control box to provide +5 Volts on Pin 1 (carrier detect) of the DE-9S RS-232 interface.  This allows the 
 Raspberry Pi Pico W to rob power from the rotator control box.
 
-See the [Documentation](documentation.md) for details
+See the [Documentation](documentation.md) for details.
 
 There is very little external hardware required.  The most important other piece is a MAX3232 3.3 volt 
 RS-232 level converter.  The MAX3232 is used to interface the 3.3 volt logic of the Raspberry Pi Pico W to
@@ -78,4 +78,8 @@ I used this same electronic design, and a lot of the same source code to make
 the [KPA-500 IOT Thing](https://github.com/n1kdo/KPA500-remote), a web interface and 
 KPA500-remote *host* for the Elecraft KPA-500 amplifier.
 
-n1kdo 2023-08-11
+## Yes it works with N1MM+
+
+See [Using the Rotator Controller-Controller with N1MM+](N1MM.md)
+
+n1kdo 2025-06-25
