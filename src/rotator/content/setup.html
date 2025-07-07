@@ -210,9 +210,9 @@
                 alert("Invalid DNS Server Address");
                 return;
             }
-
         }
         let config = {};
+        config.ap_mode = 0;
         config.SSID = ssid;
         config.secret = secret;
         config.tcp_port = tcp_port;
