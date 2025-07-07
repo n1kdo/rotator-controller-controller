@@ -307,7 +307,11 @@ class PicowNetwork:
             logging.warning('Network not initialized.', 'PicowNetwork:status')
 
     def is_connected(self):
-        return self._wlan.isconnected() if self._wlan is not None else False
+        if self._wlan is None:
+            return False
+        if self._access_point_mode:
+            return self._wlan.active()
+        return self._wlan.isconnected()
 
     def has_wan(self):
         if not self.is_connected():
