@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = """
-Copyright 2022, J. B. Otterson N1KDO.
+Copyright 2022, 2025, J. B. Otterson N1KDO.
 Redistribution and use in source and binary forms, with or without modification, 
 are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice, 
@@ -23,16 +23,12 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
+__version__ = '0.1.0'
 
-# disable pylint import error
-# pylint: disable=E0401
 import asyncio
 import gc
 import json
-import os
-import re
-import sys
-import time
+import socket
 import micro_logging as logging
 
 from http_server import (HttpServer,
@@ -40,70 +36,19 @@ from http_server import (HttpServer,
                          api_remove_file_callback,
                          api_upload_file_callback,
                          api_get_files_callback,
-                         valid_filename,
                          HTTP_VERB_GET, HTTP_VERB_POST)
-
 from morse_code import MorseCode
-from dcu1_rotator import Rotator
-from utils import milliseconds, safe_int
 import n1mm_udp
-
+from dcu1_rotator import Rotator
+from utils import milliseconds, safe_int, upython
 from picow_network import PicowNetwork
 
-upython = sys.implementation.name == 'micropython'
-
 if upython:
-    import network
     # disable pylint import error
     # pylint: disable=E0401
     from machine import Pin
-    network_status_map = {
-        network.STAT_IDLE: 'no connection and no activity',  # 0
-        network.STAT_CONNECTING: 'connecting in progress',  # 1
-        network.STAT_CONNECTING+1: 'connected no IP address',  # 2, this is undefined, but returned.
-        network.STAT_GOT_IP: 'connection successful',  # 3
-        network.STAT_WRONG_PASSWORD: 'failed due to incorrect password',  # -3
-        network.STAT_NO_AP_FOUND: 'failed because no access point replied',  # -2
-        network.STAT_CONNECT_FAIL: 'failed due to other problems',  # -1
-        }
 else:
-    import asyncio
-    import socket
-
-
-    class Machine:
-        """
-        fake micropython stuff
-        """
-
-        @staticmethod
-        def soft_reset():
-            logging.info('Machine.soft_reset()', 'main:Machine.soft_reset')
-
-        @staticmethod
-        def reset():
-            logging.info('Machine.reset()', 'main:Machine.reset')
-
-        class Pin:
-            OUT = 1
-            IN = 0
-            PULL_UP = 0
-
-            def __init__(self, name, options=0, value=0):
-                self.name = name
-                self.options = options
-                self.state = value
-
-            def on(self):
-                self.state = 1
-
-            def off(self):
-                self.state = 0
-
-            def value(self):
-                return self.state
-
-    machine = Machine()
+    from not_machine import machine
 
 # noinspection PyUnboundLocalVariable
 onboard = machine.Pin('LED', machine.Pin.OUT, value=0)
@@ -111,14 +56,8 @@ onboard.on()
 morse_led = machine.Pin(2, machine.Pin.OUT, value=0)  # status LED
 reset_button = machine.Pin(3, machine.Pin.IN, machine.Pin.PULL_UP)
 
-BUFFER_SIZE = 4096
 CONFIG_FILE = 'data/config.json'
 CONTENT_DIR = 'content/'
-DANGER_ZONE_FILE_NAMES = [
-    'config.html',
-    'files.html',
-    'rotator.html',
-]
 DEFAULT_SECRET = 'NorthSouth'
 DEFAULT_SSID = 'Rotator'
 DEFAULT_TCP_PORT = 73
@@ -378,16 +317,9 @@ async def main():
 
     config = read_config()
 
-    http_server = HttpServer(content_dir='content/')
-    if upython:
-        picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET)
-        morse_code_sender = MorseCode(morse_led)
-    else:
-        picow_network = None
-        morse_code_sender = None
-
     rotator = Rotator()
 
+    http_server = HttpServer(content_dir='content/')
     http_server.add_uri_callback(b'/', slash_callback)
     http_server.add_uri_callback(b'/api/config', api_config_callback)
     http_server.add_uri_callback(b'/api/get_files', api_get_files_callback)
@@ -398,6 +330,15 @@ async def main():
     # rotator specific
     http_server.add_uri_callback(b'/api/bearing', api_bearing_callback)
 
+    if upython:
+        picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET)
+        morse_code_sender = MorseCode(morse_led)
+        morse_code_sender_task = asyncio.create_task(morse_code_sender.morse_sender())
+    else:
+        picow_network = None
+        morse_code_sender = None
+        morse_code_sender_task = None
+
     tcp_port = safe_int(config.get('tcp_port') or DEFAULT_TCP_PORT, DEFAULT_TCP_PORT)
     if tcp_port < 0 or tcp_port > 65535:
         tcp_port = DEFAULT_TCP_PORT
@@ -405,58 +346,71 @@ async def main():
     if web_port < 0 or web_port > 65535:
         web_port = DEFAULT_WEB_PORT
 
-    if picow_network is not None:
-        connected = False
-        while not connected:
-            logging.info('waiting for picow network', 'main:main')
-            await asyncio.sleep(1)
-            connected = picow_network.is_connected()
-
-        ip_address = picow_network.get_ip_address()
-        netmask = picow_network.get_netmask()
-    else:
-        ip_address = socket.gethostbyname_ex(socket.gethostname())[2][-1]
-        netmask = '255.255.255.0'
-
-    if connected:
-        logging.info(f'Starting web service on port {web_port}', 'main:main')
-        asyncio.create_task(asyncio.start_server(http_server.serve_http_client, '0.0.0.0', web_port))
-        logging.info(f'Starting tcp service on port {tcp_port}', 'main:main')
-        asyncio.create_task(asyncio.start_server(serve_serial_client, '0.0.0.0', tcp_port))
-
-        n1mm_mode = config.get('n1mm')
-        if n1mm_mode:
-            hostname = config.get('hostname')
-            broadcast_address = n1mm_udp.calculate_broadcast_address(ip_address, netmask)
-            logging.info(f'My broadcast address (to N1MM) is {broadcast_address}', 'main:main')
-            logging.info(f'Starting rotor position broadcasts for N1MM on port {N1MM_BROADCAST_FROM_ROTOR_PORT}',
-                         'main:main')
-            send_broadcast_from_n1mm = n1mm_udp.SendBroadcastFromN1MM(broadcast_address,
-                                                                      target_port=N1MM_BROADCAST_FROM_ROTOR_PORT,
-                                                                      rotator=rotator,
-                                                                      my_name=hostname)
-            logging.info(f'Starting listener for UDP position broadcasts from N1MM on port {N1MM_ROTOR_BROADCAST_PORT}',
-                         'main:main')
-            receive_broadcast_from_n1mm = n1mm_udp.ReceiveBroadcastsFromN1MM(ip_address,
-                                                                             receive_port=N1MM_ROTOR_BROADCAST_PORT,
-                                                                             rotator=rotator,
-                                                                             my_name=hostname)
-            n1mm_sender = asyncio.create_task(send_broadcast_from_n1mm.send_datagrams())
-            n1mm_receiver = asyncio.create_task(receive_broadcast_from_n1mm.wait_for_datagram())
-    else:
-        logging.info('no network connection', 'main:main')
-
-    if upython:
-        asyncio.create_task(morse_code_sender.morse_sender())
-
-
+    connected = False
+    newly_connected = False
     reset_button_pressed_count = 0
     four_count = 0
     last_message = ''
+    ap_mode = config.get('ap_mode', False)
     while keep_running:
+        await asyncio.sleep(0.25)
+        four_count += 1
+        if four_count > 3:
+            four_count = 0
+            if picow_network is not None:
+                if not connected:
+                    logging.debug('checking network connection', 'main:main')
+                    connected = picow_network.is_connected()
+                    if connected:
+                        logging.info('network connection established', 'main:main')
+                        ip_address = picow_network.get_ip_address()
+                        netmask = picow_network.get_netmask()
+                        newly_connected = True
+                    else:
+                        logging.info('waiting for picow network', 'main:main')
+
+                else: # is connected, look for disconnect
+                    connected = picow_network.is_connected()
+                    if not connected:
+                        logging.info('network connection disconnected', 'main:main')
+            else:
+                ip_address = socket.gethostbyname_ex(socket.gethostname())[2][-1]
+                netmask = '255.255.255.0'
+                connected = True
+                newly_connected = True
+
+            if picow_network is not None and picow_network.get_message() != last_message:
+                last_message = picow_network.get_message()
+                morse_code_sender.set_message(last_message)
+
+        if newly_connected:
+            newly_connected = False
+            logging.info(f'Starting web service on port {web_port}', 'main:main')
+            asyncio.create_task(asyncio.start_server(http_server.serve_http_client, '0.0.0.0', web_port))
+            logging.info(f'Starting tcp service on port {tcp_port}', 'main:main')
+            asyncio.create_task(asyncio.start_server(serve_serial_client, '0.0.0.0', tcp_port))
+
+            n1mm_mode = config.get('n1mm')
+            if n1mm_mode and not ap_mode:
+                hostname = config.get('hostname')
+                broadcast_address = n1mm_udp.calculate_broadcast_address(ip_address, netmask)
+                logging.info(f'My broadcast address (to N1MM) is {broadcast_address}', 'main:main')
+                logging.info(f'Starting rotor position broadcasts for N1MM on port {N1MM_BROADCAST_FROM_ROTOR_PORT}',
+                             'main:main')
+                send_broadcast_from_n1mm = n1mm_udp.SendBroadcastFromN1MM(broadcast_address,
+                                                                          target_port=N1MM_BROADCAST_FROM_ROTOR_PORT,
+                                                                          rotator=rotator,
+                                                                          my_name=hostname)
+                logging.info(f'Starting listener for UDP position broadcasts from N1MM on port {N1MM_ROTOR_BROADCAST_PORT}',
+                             'main:main')
+                receive_broadcast_from_n1mm = n1mm_udp.ReceiveBroadcastsFromN1MM(ip_address,
+                                                                                 receive_port=N1MM_ROTOR_BROADCAST_PORT,
+                                                                                 rotator=rotator,
+                                                                                 my_name=hostname)
+                n1mm_sender = asyncio.create_task(send_broadcast_from_n1mm.send_datagrams())
+                n1mm_receiver = asyncio.create_task(receive_broadcast_from_n1mm.wait_for_datagram())
+
         if upython:
-            await asyncio.sleep(0.25)
-            four_count += 1
             pressed = reset_button.value() == 0
             if pressed:
                 reset_button_pressed_count += 1
@@ -464,24 +418,20 @@ async def main():
                 if reset_button_pressed_count > 0:
                     reset_button_pressed_count -= 1
             if reset_button_pressed_count > 7:
+
                 logging.info('reset button pressed', 'main:main')
                 ap_mode = not ap_mode
                 config['ap_mode'] = ap_mode
                 save_config(config)
                 keep_running = False
-            if four_count >= 3:  # check for new message every one second
-                if picow_network.get_message() != last_message:
-                    last_message = picow_network.get_message()
-                    morse_code_sender.set_message(last_message)
-                four_count = 0
-        else:
-            await asyncio.sleep(10.0)
+
     if upython:
         machine.soft_reset()
 
 
 if __name__ == '__main__':
     logging.loglevel = logging.INFO  # DEBUG
+    logging.loglevel = logging.DEBUG
     logging.info('starting', 'main:__main__')
 
     try:
