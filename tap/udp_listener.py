@@ -1,7 +1,5 @@
-import logging
 import socket
 import time
-from line_tap import hexdump_buffer
 
 ROTOR_BROADCAST_BUF_SIZE = 512
 N1MM_ROTOR_BROADCAST_PORT = 12040
