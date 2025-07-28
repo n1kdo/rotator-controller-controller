@@ -394,8 +394,10 @@ async def main():
             n1mm_mode = config.get('n1mm')
             if n1mm_mode and not ap_mode:
                 hostname = config.get('hostname')
+                logging.info(f'configuring N1MM Mode with ip address {ip_address} net mask {netmask}',
+                             'main:main')
                 broadcast_address = n1mm_udp.calculate_broadcast_address(ip_address, netmask)
-                logging.info(f'My broadcast address (to N1MM) is {broadcast_address}', 'main:main')
+                logging.info(f'Broadcast address (to N1MM) is {broadcast_address}', 'main:main')
                 logging.info(f'Starting rotor position broadcasts for N1MM on port {N1MM_BROADCAST_FROM_ROTOR_PORT}',
                              'main:main')
                 send_broadcast_from_n1mm = n1mm_udp.SendBroadcastFromN1MM(broadcast_address,
