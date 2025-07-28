@@ -19,10 +19,14 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.0'
+__version__ = '0.9.1'
 
+from utils import upython
 import asyncio
-import micro_logging as logging
+if upython:
+    import micro_logging as logging
+else:
+    import logging
 import socket
 
 ROTOR_BROADCAST_BUF_SIZE = 512
@@ -72,7 +76,8 @@ class SendBroadcastFromN1MM:
     async def send_datagrams(self):
         while self.run:
             bearing = await self.rotator.get_rotator_bearing()
-            message = f'{self.my_name} @ {bearing * 10}'
+            message = f'{self.my_name} @ {bearing * 10}'  # TODO make this into bytes
+            #message = '%s @ %d' % (self.my_name, bearing)
             self.send(message)
             await asyncio.sleep(1.50)
 
