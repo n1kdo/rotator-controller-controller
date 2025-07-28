@@ -365,6 +365,7 @@ async def main():
                         logging.info('network connection established', 'main:main')
                         ip_address = picow_network.get_ip_address()
                         netmask = picow_network.get_netmask()
+                        logging.info(f'ip_address {ip_address}, netmask {netmask}', 'main:main')
                         newly_connected = True
                     else:
                         logging.info('waiting for picow network', 'main:main')
