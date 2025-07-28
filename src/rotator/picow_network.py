@@ -112,9 +112,6 @@ class PicowNetwork:
         if self._message_func:
             await self._message_func(self._message, self._status)
 
-    def get_message(self) -> str:
-        return self._message
-
     async def connect(self) -> None:
         network.country('US')
         network.ipconfig(prefer=4)  # this is an IPv4 network
