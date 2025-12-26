@@ -23,25 +23,26 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.1.3'
+__version__ = '0.1.9'  # 2025-12-22
 
 import gc
 import json
 import os
 import re
+import micro_logging as logging
 
 from utils import milliseconds, safe_int, upython
-if upython:
-    import micro_logging as logging
-else:
-    import logging
+if not upython:
     def const(i):
         return i
 
 # these are the HTTP responses that will be sent.
+# noinspection PyUnboundLocalVariable
 HTTP_STATUS_OK = const(200)
 HTTP_STATUS_CREATED = const(201)
+HTTP_STATUS_MOVED_PERMANENTLY = const(301)
 HTTP_STATUS_BAD_REQUEST = const(400)
+HTTP_STATUS_FORBIDDEN = const(403)
 HTTP_STATUS_CONFLICT = const(409)
 HTTP_STATUS_NOT_FOUND = const(404)
 HTTP_STATUS_INTERNAL_SERVER_ERROR = const(500)
@@ -57,7 +58,7 @@ _MP_END_BOUND = const(4)
 
 
 class HttpServer:
-    CT_TEXT_TEXT = b'text/text'
+    CT_TEXT_TEXT = b'text/plain'
     CT_TEXT_HTML = b'text/html'
     CT_APP_JSON = b'application/json'
     CT_APP_WWW_FORM = b'application/x-www-form-urlencoded'
@@ -80,12 +81,12 @@ class HttpServer:
         HTTP_STATUS_CREATED: b'Created',
         #202: b'Accepted',
         #204: b'No Content',
-        #301: b'Moved Permanently',
+        HTTP_STATUS_MOVED_PERMANENTLY: b'Moved Permanently',
         #302: b'Moved Temporarily',
         #304: b'Not Modified',
         HTTP_STATUS_BAD_REQUEST: b'Bad Request',
         #401: b'Unauthorized',
-        #403: b'Forbidden',
+        HTTP_STATUS_FORBIDDEN: b'Forbidden',
         HTTP_STATUS_NOT_FOUND: b'Not Found',
         HTTP_STATUS_CONFLICT: b'Conflict',
         HTTP_STATUS_INTERNAL_SERVER_ERROR: b'Internal Server Error',
@@ -101,17 +102,30 @@ class HttpServer:
 
     def __init__(self, content_dir):
         self.content_dir = content_dir
-        self.uri_map = {}
+        self.uri_map = {b'/api/get_files': api_get_files_callback,
+                        b'/api/upload_file': api_upload_file_callback,
+                        b'/api/remove_file': api_remove_file_callback,
+                        b'/api/rename_file': api_rename_file_callback,
+                        }
+
         self.buffer = bytearray(_BUFFER_SIZE)
         self.bmv = memoryview(self.buffer)
 
-    def add_uri_callback(self, uri, callback):
+    def route(self, uri):
         if isinstance(uri, str):
             logging.warning(f'uri {uri} is str not bytes', 'http_server:add_uri_callback')
             uri = uri.encode('utf-8')
-        self.uri_map[uri] = callback
+
+        def decorator(func):
+            self.uri_map[uri] = func
+            return func
+        return decorator
 
     async def serve_content(self, writer, filename):
+        if '..' in filename or filename.startswith('/..'):
+            response = b'<html><body><p>403 -- Forbidden.</p></body></html>'
+            return (await self.send_simple_response(writer, HTTP_STATUS_FORBIDDEN, self.CT_TEXT_HTML, response),
+                    HTTP_STATUS_FORBIDDEN)
         filename = self.content_dir + filename
         try:
             content_length = os.stat(filename)[6]
@@ -120,31 +134,34 @@ class HttpServer:
             content_length = -1
         if content_length < 0:
             response = b'<html><body><p>404 -- File not found.</p></body></html>'
-            http_status = HTTP_STATUS_NOT_FOUND
-            return await self.send_simple_response(writer, http_status, self.CT_TEXT_HTML, response), http_status
+            return (await self.send_simple_response(writer, HTTP_STATUS_NOT_FOUND, self.CT_TEXT_HTML, response),
+                    HTTP_STATUS_NOT_FOUND)
         extension = filename.split('.')[-1]
-        content_type = self.FILE_EXTENSION_TO_CONTENT_TYPE_MAP.get(extension)
-        if content_type is None:
-            content_type = self.FILE_EXTENSION_TO_CONTENT_TYPE_MAP.get('*')
-        http_status = HTTP_STATUS_OK
+        content_type = self.FILE_EXTENSION_TO_CONTENT_TYPE_MAP.get(extension, b'application/octet-stream')
         await self.start_response(writer, HTTP_STATUS_OK, content_type, content_length)
         try:
             with open(filename, 'rb', _BUFFER_SIZE) as infile:
+                bytes_since_drain = 0
+                # Drain after roughly 16 KB or at EOF to reduce syscall overhead while preventing buffer bloat.
+                drain_threshold = _BUFFER_SIZE * 4
                 while True:
-                    # readinto is supported by micropython
-                    bytes_read = infile.readinto(self.bmv)
-                    if bytes_read == _BUFFER_SIZE:
-                        writer.write(self.bmv)
-                    else:
-                        writer.write(self.bmv[0:bytes_read])
-                    await writer.drain()
+                    bytes_read = infile.readinto(self.buffer)
+                    if bytes_read:
+                        writer.write(self.bmv[:bytes_read])
+                        bytes_since_drain += bytes_read
+                        if bytes_since_drain >= drain_threshold:
+                            await writer.drain()
+                            bytes_since_drain = 0
                     if bytes_read < _BUFFER_SIZE:
+                        # EOF reached; ensure pending bytes are flushed.
+                        if bytes_since_drain:
+                            await writer.drain()
                         break
         except Exception as exc:
             logging.error(f'{type(exc)} {exc}', 'http_server:serve_content')
-        return content_length, http_status
+        return content_length, HTTP_STATUS_OK
 
-    async def start_response(self, writer, http_status:int=HTTP_STATUS_OK, content_type:bytes=None, response_size:int=0, extra_headers:list[bytes]=None):
+    async def start_response(self, writer, http_status:int=HTTP_STATUS_OK, content_type:bytes=b'', response_size:int=0, extra_headers:list[bytes]=None):
         status_text = self.HTTP_STATUS_TEXT.get(http_status) or b'Confused'
         writer.write(b'HTTP/1.0 %d %s\r\n' % (http_status, status_text))
         writer.write(b'Access-Control-Allow-Origin: *\r\n')  # CORS override
@@ -161,11 +178,11 @@ class HttpServer:
         writer.write(b'\r\n')
         await writer.drain()
 
-    async def send_simple_response(self, writer, http_status=HTTP_STATUS_OK, content_type=None, response=None, extra_headers=None):
+    async def send_simple_response(self, writer, http_status=HTTP_STATUS_OK, content_type=b'', response=None, extra_headers=None):
         content_length = 0
         typ = type(response)
         if response is None:
-            await self.start_response(writer, http_status, None, 0, extra_headers)
+            await self.start_response(writer, http_status, content_type, 0, extra_headers)
         elif typ == bytes:
             content_length = len(response)
             await self.start_response(writer, http_status, content_type, content_length, extra_headers)
@@ -185,15 +202,18 @@ class HttpServer:
 
     @classmethod
     def unpack_args(cls, value):
-        args_dict = {}
-        if value is not None:
+        if not value:
+            return {}
+        # Accept bytes or str; decode only if needed to avoid extra allocations and errors.
+        if isinstance(value, bytes):
             value = value.decode()
-            args_list = value.split('&')
-            for arg in args_list:
-                arg_parts = arg.split('=')
-                if len(arg_parts) == 2:
-                    args_dict[arg_parts[0]] = arg_parts[1]
-        return args_dict
+        args = {}
+        args_list = value.split('&')
+        for arg in args_list:
+            arg_parts = arg.split('=')
+            if len(arg_parts) == 2:
+                args[arg_parts[0]] = arg_parts[1]
+        return args
 
     async def serve_http_client(self, reader, writer):
         gc.collect()
@@ -230,7 +250,7 @@ class HttpServer:
                 logging.warning(b'Bad request, wrong verb {verb}', 'http_server:serve_http_client')
                 response = b'<html><body><p>only GET and POST are supported</p></body></html>'
                 bytes_sent = await self.send_simple_response(writer, http_status, self.CT_TEXT_HTML, response)
-            elif protocol not in [b'HTTP/1.0', b'HTTP/1.1']:
+            elif protocol not in {b'HTTP/1.0', b'HTTP/1.1'}:
                 logging.warning(f'bad request, wrong http protocol {protocol}', 'http_server:serve_http_client')
                 http_status = HTTP_STATUS_BAD_REQUEST
                 response = b'protocol %s is not supported' % protocol
@@ -242,13 +262,11 @@ class HttpServer:
                 request_headers = {}
                 while True:
                     header = await reader.readline()
-                    if len(header) == 0:
-                        # empty header line, eof?
-                        break
-                    if header == b'\r\n':
-                        # blank line at end of headers
+                    if header in (b'', b'\r\n'):
                         break
                     # process headers.  look for those we are interested in.
+                    if b':' not in header:  # ignore malformed header
+                        continue
                     parts = header.split(b':', 1)
                     header_name = parts[0].strip()
                     header_value = parts[1].strip()
@@ -262,12 +280,17 @@ class HttpServer:
                     args = self.unpack_args(query_args)
                 elif verb == HTTP_VERB_POST:
                     if request_content_length > 0:
-                        if request_content_type == self.CT_APP_WWW_FORM:
+                        if request_content_type.startswith(self.CT_APP_WWW_FORM):
                             data = await reader.read(request_content_length)
                             args = self.unpack_args(data)
-                        elif request_content_type == self.CT_APP_JSON:
+                        elif request_content_type.startswith(self.CT_APP_JSON):
                             data = await reader.read(request_content_length)
-                            args = json.loads(data.decode())
+                            try:
+                                args = json.loads(data.decode())
+                            except Exception as e:
+                                args = {}
+                                logging.error(f'cannot decode posted JSON "{data}": {e}',
+                                              'http_server:serve_http_client')
                         elif not request_content_type.startswith(self.CT_MULTIPART_FORM):
                             logging.warning(f'warning: unhandled content_type {request_content_type}',
                                             'http_server:serve_http_client')
@@ -284,26 +307,25 @@ class HttpServer:
                     if callback is not None:
                         bytes_sent, http_status = await callback(self, verb, args, reader, writer, request_headers)
                     else:
-                        content_file = target[1:] if target[0] == '/' else target
+                        content_file = target[1:] if target.startswith(b'/') else target
                         bytes_sent, http_status = await self.serve_content(writer, content_file.decode())
 
         await writer.drain()
         writer.close()
         await writer.wait_closed()
         elapsed = milliseconds() - t0
-        logging.info(f'{partner} {request} {http_status} {bytes_sent} {elapsed} ms',
-                     'http_server:serve_http_client')
+        if logging.should_log(logging.INFO):
+            logging.info(f'{partner} {request} {http_status} {bytes_sent} {elapsed} ms',
+                         'http_server:serve_http_client')
         gc.collect()
 
 #
 # common file operations callbacks, here because just about every app will use them...
 #
-
-
 def valid_filename(filename):
     if filename is None:
         return False
-    match = re.match('^[a-zA-Z0-9](?:[a-zA-Z0-9._-]*[a-zA-Z0-9])?.[a-zA-Z0-9_-]+$', filename)
+    match = re.match(r'^[A-Za-z0-9][A-Za-z0-9._-]*\.[A-Za-z0-9_-]+$', filename)
     if match is None:
         return False
     if match.group(0) != filename:
@@ -339,8 +361,8 @@ async def api_upload_file_callback(http, verb, args, reader, writer, request_hea
     if verb == HTTP_VERB_POST:
         logging.debug('http post handler', 'http_server:api_upload_file_callback')
         boundary = None
-        request_content_type = request_headers.get(b'Content-Type') or ''
-        if ';' in request_content_type:
+        request_content_type = request_headers.get(b'Content-Type') or b''
+        if b';' in request_content_type:
             pieces = request_content_type.split(b';')
             request_content_type = pieces[0]
             boundary = pieces[1].strip()
@@ -402,11 +424,11 @@ async def api_upload_file_callback(http, verb, args, reader, writer, request_hea
                             state = _MP_END_BOUND
                             output_file.close()
                             output_file = None
-                            response = b'Uploaded %s successfully' % filename
+                            response = b'Uploaded "uploaded_%s" successfully' % filename
                             http_status = HTTP_STATUS_CREATED
                         start = end + 2
                     else:  # must be reading headers or boundary
-                        line = ''
+                        line = b''
                         for i in range(start, len(buffer) - 1):
                             if buffer[i] == 13 and buffer[i + 1] == 10:
                                 line = buffer[start:i]
@@ -438,7 +460,7 @@ async def api_upload_file_callback(http, verb, args, reader, writer, request_hea
                         else:
                             http_status = HTTP_STATUS_INTERNAL_SERVER_ERROR
                             response = b'unmanaged state %d' % state
-        logging.warning(f'upload response: {response}', 'http_server:api_upload_file_callback')
+        logging.info(f'upload response: {response}', 'http_server:api_upload_file_callback')
         bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     else:
         response = b'POST only.'
@@ -477,10 +499,6 @@ async def api_rename_file_callback(http, verb, args, reader, writer, request_hea
             http_status = HTTP_STATUS_CONFLICT
             response = f'new file {newname} already exists'.encode('utf-8')
         else:
-            try:
-                os.remove(newname)
-            except OSError:
-                pass  # swallow exception.
             try:
                 os.rename(filename, newname)
                 http_status = HTTP_STATUS_OK

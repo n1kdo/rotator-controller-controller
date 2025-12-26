@@ -32,10 +32,7 @@ import socket
 import micro_logging as logging
 
 from http_server import (HttpServer,
-                         api_rename_file_callback,
-                         api_remove_file_callback,
-                         api_upload_file_callback,
-                         api_get_files_callback,
+                         HTTP_STATUS_OK, HTTP_STATUS_BAD_REQUEST, HTTP_STATUS_CONFLICT,
                          HTTP_VERB_GET, HTTP_VERB_POST)
 from morse_code import MorseCode
 import n1mm_udp
@@ -69,6 +66,9 @@ N1MM_BROADCAST_FROM_ROTOR_PORT = 13010
 # globals
 keep_running = True
 rotator = None
+
+# http server
+http_server = HttpServer(content_dir=CONTENT_DIR)
 
 
 def read_config():
@@ -155,6 +155,7 @@ async def serve_serial_client(reader, writer):
 
 
 # noinspection PyUnusedLocal
+@http_server.route(b'/')
 async def slash_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/'
     http_status = 301
     bytes_sent = await http.send_simple_response(writer, http_status, None, None, ['Location: /rotator.html'])
@@ -162,6 +163,7 @@ async def slash_callback(http, verb, args, reader, writer, request_headers=None)
 
 
 # noinspection PyUnusedLocal
+@http_server.route(b'/api/config')
 async def api_config_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/api/config'
     if verb == HTTP_VERB_GET:
         payload = read_config()
@@ -270,6 +272,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
 
 
 # noinspection PyUnusedLocal
+@http_server.route(b'/api/restart')
 async def api_restart_callback(http, verb, args, reader, writer, request_headers=None):
     global keep_running
     if upython:
@@ -286,6 +289,7 @@ async def api_restart_callback(http, verb, args, reader, writer, request_headers
 
 # rotator web actions
 # noinspection PyUnusedLocal
+@http_server.route(b'/api/bearing')
 async def api_bearing_callback(http, verb, args, reader, writer, request_headers=None):
     requested_bearing = args.get('set')
     if requested_bearing:
@@ -319,17 +323,6 @@ async def main():
 
     rotator = Rotator()
 
-    http_server = HttpServer(content_dir='content/')
-    http_server.add_uri_callback(b'/', slash_callback)
-    http_server.add_uri_callback(b'/api/config', api_config_callback)
-    http_server.add_uri_callback(b'/api/get_files', api_get_files_callback)
-    http_server.add_uri_callback(b'/api/upload_file', api_upload_file_callback)
-    http_server.add_uri_callback(b'/api/remove_file', api_remove_file_callback)
-    http_server.add_uri_callback(b'/api/rename_file', api_rename_file_callback)
-    http_server.add_uri_callback(b'/api/restart', api_restart_callback)
-    # rotator specific
-    http_server.add_uri_callback(b'/api/bearing', api_bearing_callback)
-
     if upython:
         picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET)
         morse_code_sender = MorseCode(morse_led)
@@ -360,20 +353,14 @@ async def main():
             if picow_network is not None:
                 if not connected:
                     logging.debug('checking network connection', 'main:main')
-                    connected = picow_network.is_connected()
-                    if connected:
-                        logging.info('network connection established', 'main:main')
-                        ip_address = picow_network.get_ip_address()
+                    ip_address = picow_network.get_ip_address()
+                    if ip_address is not None:
+                        connected = True
                         netmask = picow_network.get_netmask()
                         logging.info(f'ip_address {ip_address}, netmask {netmask}', 'main:main')
                         newly_connected = True
                     else:
                         logging.info('waiting for picow network', 'main:main')
-
-                else: # is connected, look for disconnect
-                    connected = picow_network.is_connected()
-                    if not connected:
-                        logging.info('network connection disconnected', 'main:main')
             else:
                 ip_address = socket.gethostbyname_ex(socket.gethostname())[2][-1]
                 netmask = '255.255.255.0'
