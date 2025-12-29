@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = """
-Copyright 2022, 2024 J. B. Otterson N1KDO.
+Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.
 Redistribution and use in source and binary forms, with or without modification, 
 are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice, 
@@ -23,19 +23,13 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.4'
+__version__ = '0.9.6'  # 2025-12-29
 
 # disable pylint import error
 # pylint: disable=E0401
 
-import sys
-impl_name = sys.implementation.name
-if impl_name == 'cpython':
-    import asyncio
-    import logging
-else:
-    import uasyncio as asyncio
-    import micro_logging as logging
+import asyncio
+import micro_logging as logging
 
 
 class MorseCode:
@@ -73,7 +67,7 @@ class MorseCode:
 
     def __init__(self, led):
         self.led = led
-        self.message = 'START '  # TODO convert this to bytes
+        self.message = 'START '
         self.keep_running = True
         asyncio.create_task(self.morse_sender())
 
@@ -81,7 +75,7 @@ class MorseCode:
         # do not send periods in Morse code, send a space instead.
         new_message = new_message.upper().replace('.', ' ')
         if self.message != new_message:
-            logging.info(f'new message "{new_message}"', 'morse_code:set_message')
+            logging.info(f'new message "{new_message}")', 'morse_code:set_message')
             self.message = new_message
 
     async def morse_sender(self):
@@ -98,15 +92,14 @@ class MorseCode:
             for morse_letter in msg:
                 blink_pattern = patterns.get(morse_letter)
                 if blink_pattern is None:
-                    logging.debug(f'[MORSE_CODE] Warning: no pattern for letter {morse_letter}',
+                    logging.debug(f'No pattern for letter "{morse_letter}" ({ord(morse_letter)})',
                                   'morse_code:morse_sender')
                     blink_pattern = patterns.get(' ')
-                blink_list = list(blink_pattern)
-                while len(blink_list) > 0:
-                    blink_time = blink_list.pop(0)
+                for blink_time in blink_pattern:
                     if blink_time > 0:
                         # blink time is in milliseconds!, but data is in 10 msec
                         led.on()
-                        await sleep(blink_time/100)
+                        await sleep(blink_time / 100)  # dit or dah
                         led.off()
-                    await sleep(morse_esp / 100 if len(blink_list) > 0 else morse_lsp / 100)
+                    await sleep(morse_esp / 100)  # dit length element space
+                await sleep(morse_lsp / 100)  # + inter-letter space

@@ -20,7 +20,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.10.3'
+__version__ = '0.10.5'  # 2025-12-29
 
 import argparse
 import hashlib
@@ -52,7 +52,7 @@ class BytesConcatenator:
         self.data.extend(b.replace(b"\x04", b""))
 
     def __str__(self):
-        return self.data.decode('utf-8').replace('\r', '')
+        return self.data.decode('utf-8', errors='replace').replace('\r', '')
 
 
 def get_ports_list():
@@ -61,7 +61,7 @@ def get_ports_list():
 
 # noinspection PyUnusedLocal
 def put_file_progress_callback(bytes_so_far, bytes_total):
-    print(f'{bytes_so_far:05d}/{bytes_total:05d} bytes sent.\r',end='')
+    print(f'{bytes_so_far:05d}/{bytes_total:05d} bytes sent.\r', end='', flush=True)
 
 
 def put_file(filename, target, source_directory='.', src_file_name=None):
@@ -89,6 +89,19 @@ def put_file(filename, target, source_directory='.', src_file_name=None):
             print(f'cannot find source file {src_file_name}')
             return False
     return True
+
+
+def loader_implementation(target):
+    data = BytesConcatenator()
+    cmd = f"""import sys
+nm = sys.implementation.name
+ver = sys.implementation.version
+ver = '{{}}.{{}}.{{}}'.format(ver[0], ver[1], ver[2])
+mach = sys.implementation._machine
+print('{{}}|{{}}|{{}}'.format(nm, ver, mach))
+"""
+    target.exec_(cmd, data_consumer=data.write_bytes)
+    return str(data).rstrip('\n').split('|')
 
 
 def loader_ls(target, src='/'):
@@ -123,7 +136,7 @@ def loader_sha1(target, file=''):
     hash_data = BytesConcatenator()
     cmd = f"""import hashlib
 hasher = hashlib.sha1()
-with open('{file}', 'rb', encoding=None) as fp:
+with open('{file}', 'rb') as fp:
   while True:
     buffer = fp.read(2048)
     if buffer is None or len(buffer) == 0:
@@ -146,7 +159,7 @@ def local_sha1(file):
     return bytes.hex(hasher.digest())
 
 
-def load_device(port, force, manifest_filename='loader_manifest.json'):
+def load_device(port, force, manifest_filename='loader_manifest.json', no_watchdog=False):
     try:
         with open(manifest_filename, 'r') as manifest_file:
             manifest = json.load(manifest_file)
@@ -191,6 +204,9 @@ def load_device(port, force, manifest_filename='loader_manifest.json'):
 
         target.enter_raw_repl()
 
+    target_impl = loader_implementation(target)
+    print(target_impl)
+
     # clean up files that do not belong here.
     existing_files = loader_ls(target)
     for existing_file in existing_files:
@@ -207,7 +223,7 @@ def load_device(port, force, manifest_filename='loader_manifest.json'):
         if force or existing_file not in files_list:
             if existing_file[-1] == '/':
                 print(f'removing directory {existing_file[:-1]}')
-                target.fs_rm(existing_file[:-1])
+                target.fs_rmdir(existing_file[:-1])
             else:
                 print(f'removing file {existing_file}')
                 target.fs_rm(existing_file)
@@ -216,6 +232,9 @@ def load_device(port, force, manifest_filename='loader_manifest.json'):
     existing_files = loader_ls(target)
     for file in files_list:
         if not file.endswith('/'):
+            if no_watchdog and file.endswith(_WATCHDOG_PY):
+                print(f'Skipping {file}')
+                continue
             # if this is not a directory, get the sha1 hash of the pico-w file
             # and compare it with the sha1 hash of the local file.
             # do not send unchanged files.  This makes subsequent loader invocations much faster.
@@ -260,9 +279,11 @@ def main():
     parser.add_argument('--force',
                         action='store_true',
                         help='force all files to be replaced')
+    parser.add_argument('--no-watchdog',
+                        action='store_true',
+                        help='do not load watchdog.py.')
     parser.add_argument('--port',
                         help='name of serial port, otherwise it will be detected.')
-
     parser.add_argument('--manifest-filename',
                         help='name of manifest file',
                         default='loader_manifest.json')
@@ -271,6 +292,10 @@ def main():
         force = args.force
     else:
         force = False
+    if 'no_watchdog' in args:
+        no_watchdog = args.no_watchdog
+    else:
+        no_watchdog = False
     if 'port' in args and args.port is not None:
         picow_port = args.port
     else:
@@ -294,7 +319,7 @@ def main():
         sys.exit(1)
 
     print(f'Loading device on {picow_port}...')
-    load_device(picow_port, force, manifest_filename=args.manifest_filename)
+    load_device(picow_port, force, manifest_filename=args.manifest_filename, no_watchdog=no_watchdog)
 
 
 if __name__ == "__main__":

@@ -23,7 +23,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.1.9'  # 2025-12-22
+__version__ = '0.1.10'  # 2025-12-29
 
 import gc
 import json
@@ -95,10 +95,11 @@ class HttpServer:
         #503: b'Service Unavailable',
     }
 
-    DANGER_ZONE_FILE_NAMES = [
-        'network.html',
+    DANGER_ZONE_FILE_NAMES = (
         'files.html',
-    ]
+        'network.html',
+        'setup.html',
+    )
 
     def __init__(self, content_dir):
         self.content_dir = content_dir
