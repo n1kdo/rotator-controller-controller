@@ -23,7 +23,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.1.0'
+__version__ = '0.1.1'  # 2026-01-01
 
 import asyncio
 import gc
@@ -353,9 +353,9 @@ async def main():
             if picow_network is not None:
                 if not connected:
                     logging.debug('checking network connection', 'main:main')
-                    ip_address = picow_network.get_ip_address()
-                    if ip_address is not None:
-                        connected = True
+                    connected = picow_network.is_connected()
+                    if connected:
+                        ip_address = picow_network.get_ip_address()
                         netmask = picow_network.get_netmask()
                         logging.info(f'ip_address {ip_address}, netmask {netmask}', 'main:main')
                         newly_connected = True
@@ -421,7 +421,7 @@ async def main():
 
 if __name__ == '__main__':
     logging.loglevel = logging.INFO
-    # logging.loglevel = logging.DEBUG
+    #logging.loglevel = logging.DEBUG
     logging.info('starting', 'main:__main__')
 
     try:

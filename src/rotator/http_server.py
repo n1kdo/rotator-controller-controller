@@ -23,7 +23,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.1.10'  # 2025-12-29
+__version__ = '0.1.11'  # 2025-12-31
 
 import gc
 import json
@@ -45,6 +45,8 @@ HTTP_STATUS_BAD_REQUEST = const(400)
 HTTP_STATUS_FORBIDDEN = const(403)
 HTTP_STATUS_CONFLICT = const(409)
 HTTP_STATUS_NOT_FOUND = const(404)
+HTTP_STATUS_LENGTH_REQUIRED = const(411)
+HTTP_STATUS_CONTENT_TOO_LARGE = const(413)
 HTTP_STATUS_INTERNAL_SERVER_ERROR = const(500)
 
 HTTP_VERB_GET = b'GET'
@@ -55,6 +57,21 @@ _MP_START_BOUND = const(1)
 _MP_HEADERS = const(2)
 _MP_DATA = const(3)
 _MP_END_BOUND = const(4)
+
+_MAX_UPLOAD_SIZE = const(65536)  # biggest allowed file upload.
+DOTS = '..'
+SEP = '/'
+
+def _safe_content_path(content_dir: str, filename: str) -> str:
+    """Return the normalized content path if it is inside content_dir, else raise ValueError."""
+    if filename.startswith(SEP) or DOTS in filename:
+        raise ValueError('forbidden path traversal')
+    # join then normpath to prevent traversal
+    if content_dir.endswith(SEP):
+        joined = content_dir + filename
+    else:
+        joined = content_dir + SEP + filename
+    return joined
 
 
 class HttpServer:
@@ -127,7 +144,12 @@ class HttpServer:
             response = b'<html><body><p>403 -- Forbidden.</p></body></html>'
             return (await self.send_simple_response(writer, HTTP_STATUS_FORBIDDEN, self.CT_TEXT_HTML, response),
                     HTTP_STATUS_FORBIDDEN)
-        filename = self.content_dir + filename
+        try:
+            filename = _safe_content_path(self.content_dir, filename)
+        except ValueError:
+            response = b'<html><body><p>403 -- Forbidden.</p></body></html>'
+            return (await self.send_simple_response(writer, HTTP_STATUS_FORBIDDEN, self.CT_TEXT_HTML, response),
+                    HTTP_STATUS_FORBIDDEN)
         try:
             content_length = os.stat(filename)[6]
             content_length = safe_int(content_length, -1)
@@ -375,92 +397,99 @@ async def api_upload_file_callback(http, verb, args, reader, writer, request_hea
         else:
             response = b'unhandled problem'
             http_status = HTTP_STATUS_INTERNAL_SERVER_ERROR
-            request_content_length = int(request_headers.get(b'Content-Length') or '0')
-            remaining_content_length = request_content_length
-            logging.info(f'upload content length {request_content_length}', 'main:api_upload_file_callback')
-            start_boundary = http.HYPHENS + boundary
-            end_boundary = start_boundary + http.HYPHENS
-            state = _MP_START_BOUND
-            filename = None
-            output_file = None
-            writing_file = False
-            more_bytes = True
-            leftover_bytes = []
-            while more_bytes:
-                buffer = await reader.read(_BUFFER_SIZE)
-                remaining_content_length -= len(buffer)
-                if remaining_content_length == 0:  # < BUFFER_SIZE:
-                    more_bytes = False
-                if len(leftover_bytes) != 0:
-                    buffer = leftover_bytes + buffer
-                    leftover_bytes = []
-                start = 0
-                while start < len(buffer):
-                    if state == _MP_DATA:
-                        if not output_file:
-                            output_file = open(http.content_dir + 'uploaded_' + filename, 'wb')
-                            writing_file = True
-                        end = len(buffer)
-                        for i in range(start, len(buffer) - 3):
-                            if buffer[i] == 13 and buffer[i + 1] == 10 and buffer[i + 2] == 45 and \
-                                    buffer[i + 3] == 45:
-                                end = i
-                                writing_file = False
-                                break
-                        if end == _BUFFER_SIZE:
-                            if buffer[-1] == 13:
-                                leftover_bytes = buffer[-1:]
-                                buffer = buffer[:-1]
-                                end -= 1
-                            elif buffer[-2] == 13 and buffer[-1] == 10:
-                                leftover_bytes = buffer[-2:]
-                                buffer = buffer[:-2]
-                                end -= 2
-                            elif buffer[-3] == 13 and buffer[-2] == 10 and buffer[-1] == 45:
-                                leftover_bytes = buffer[-3:]
-                                buffer = buffer[:-3]
-                                end -= 3
-                        output_file.write(buffer[start:end])
-                        if not writing_file:
-                            state = _MP_END_BOUND
-                            output_file.close()
-                            output_file = None
-                            response = b'Uploaded "uploaded_%s" successfully' % filename
-                            http_status = HTTP_STATUS_CREATED
-                        start = end + 2
-                    else:  # must be reading headers or boundary
-                        line = b''
-                        for i in range(start, len(buffer) - 1):
-                            if buffer[i] == 13 and buffer[i + 1] == 10:
-                                line = buffer[start:i]
-                                start = i + 2
-                                break
-                        if state == _MP_START_BOUND:
-                            if line == start_boundary:
-                                state = _MP_HEADERS
+            request_content_length = safe_int(request_headers.get(b'Content-Length') or '0', 0)
+            if request_content_length == 0:
+                response = b'file is too small'
+                http_status = HTTP_STATUS_LENGTH_REQUIRED
+            elif request_content_length > _MAX_UPLOAD_SIZE:
+                response = b'file is too big'
+                http_status = HTTP_STATUS_CONTENT_TOO_LARGE
+            else:
+                remaining_content_length = request_content_length
+                logging.info(f'upload content length {request_content_length}', 'main:api_upload_file_callback')
+                start_boundary = http.HYPHENS + boundary
+                end_boundary = start_boundary + http.HYPHENS
+                state = _MP_START_BOUND
+                filename = None
+                output_file = None
+                writing_file = False
+                more_bytes = True
+                leftover_bytes = []
+                while more_bytes:
+                    buffer = await reader.read(_BUFFER_SIZE)
+                    remaining_content_length -= len(buffer)
+                    if remaining_content_length == 0:
+                        more_bytes = False
+                    if len(leftover_bytes) != 0:
+                        buffer = leftover_bytes + buffer
+                        leftover_bytes = []
+                    start = 0
+                    while start < len(buffer):
+                        if state == _MP_DATA:
+                            if not output_file:
+                                output_file = open(http.content_dir + 'uploaded_' + filename, 'wb')
+                                writing_file = True
+                            end = len(buffer)
+                            for i in range(start, len(buffer) - 3):
+                                if buffer[i] == 13 and buffer[i + 1] == 10 and buffer[i + 2] == 45 and \
+                                        buffer[i + 3] == 45:
+                                    end = i
+                                    writing_file = False
+                                    break
+                            if end == _BUFFER_SIZE:
+                                if buffer[-1] == 13:
+                                    leftover_bytes = buffer[-1:]
+                                    buffer = buffer[:-1]
+                                    end -= 1
+                                elif buffer[-2] == 13 and buffer[-1] == 10:
+                                    leftover_bytes = buffer[-2:]
+                                    buffer = buffer[:-2]
+                                    end -= 2
+                                elif buffer[-3] == 13 and buffer[-2] == 10 and buffer[-1] == 45:
+                                    leftover_bytes = buffer[-3:]
+                                    buffer = buffer[:-3]
+                                    end -= 3
+                            output_file.write(buffer[start:end])
+                            if not writing_file:
+                                state = _MP_END_BOUND
+                                output_file.close()
+                                output_file = None
+                                response = b'Uploaded "uploaded_%s" successfully' % filename
+                                http_status = HTTP_STATUS_CREATED
+                            start = end + 2
+                        else:  # must be reading headers or boundary
+                            line = b''
+                            for i in range(start, len(buffer) - 1):
+                                if buffer[i] == 13 and buffer[i + 1] == 10:
+                                    line = buffer[start:i]
+                                    start = i + 2
+                                    break
+                            if state == _MP_START_BOUND:
+                                if line == start_boundary:
+                                    state = _MP_HEADERS
+                                else:
+                                    logging.error(f'expecting start boundary, got {line}', 'main:api_upload_file_callback')
+                            elif state == _MP_HEADERS:
+                                if len(line) == 0:
+                                    state = _MP_DATA
+                                elif line.startswith(b'Content-Disposition:'):
+                                    pieces = line.split(b';')
+                                    fn = pieces[2].strip()
+                                    if fn.startswith(b'filename="'):
+                                        filename = fn[10:-1].decode()
+                                        if not valid_filename(filename):
+                                            response = b'bad filename'
+                                            http_status = HTTP_STATUS_BAD_REQUEST
+                                            more_bytes = False
+                                            start = len(buffer)
+                            elif state == _MP_END_BOUND:
+                                if line == end_boundary:
+                                    state = _MP_START_BOUND
+                                else:
+                                    logging.error(f'expecting end boundary, got {line}', 'main:api_upload_file_callback')
                             else:
-                                logging.error(f'expecting start boundary, got {line}', 'main:api_upload_file_callback')
-                        elif state == _MP_HEADERS:
-                            if len(line) == 0:
-                                state = _MP_DATA
-                            elif line.startswith(b'Content-Disposition:'):
-                                pieces = line.split(b';')
-                                fn = pieces[2].strip()
-                                if fn.startswith(b'filename="'):
-                                    filename = fn[10:-1].decode()
-                                    if not valid_filename(filename):
-                                        response = b'bad filename'
-                                        http_status = HTTP_STATUS_INTERNAL_SERVER_ERROR
-                                        more_bytes = False
-                                        start = len(buffer)
-                        elif state == _MP_END_BOUND:
-                            if line == end_boundary:
-                                state = _MP_START_BOUND
-                            else:
-                                logging.error(f'expecting end boundary, got {line}', 'main:api_upload_file_callback')
-                        else:
-                            http_status = HTTP_STATUS_INTERNAL_SERVER_ERROR
-                            response = b'unmanaged state %d' % state
+                                http_status = HTTP_STATUS_INTERNAL_SERVER_ERROR
+                                response = b'unmanaged state %d' % state
         logging.info(f'upload response: {response}', 'http_server:api_upload_file_callback')
         bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     else:

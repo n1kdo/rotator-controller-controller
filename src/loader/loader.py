@@ -20,8 +20,14 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.10.5'  # 2025-12-29
+__version__ = '0.10.7'  # 2025-12-31
 
+"""
+Note: to edit linux forced device names, edit
+/etc/udev/rules.d/99-usb-serial.rules
+see: https://programmador.com/posts/2023/linux-usb-serial-device-name-binding/
+see: https://k4sbc.com/consistently-name-usb-serial-ports/
+"""
 import argparse
 import hashlib
 import json
@@ -89,6 +95,13 @@ def put_file(filename, target, source_directory='.', src_file_name=None):
             print(f'cannot find source file {src_file_name}')
             return False
     return True
+
+
+def loader_bootloader(target):
+    cmd = f"""import machine
+machine.bootloader()
+"""
+    target.exec_raw_no_follow(cmd)
 
 
 def loader_implementation(target):
@@ -159,7 +172,10 @@ def local_sha1(file):
     return bytes.hex(hasher.digest())
 
 
-def load_device(port, force, manifest_filename='loader_manifest.json', no_watchdog=False):
+def load_device(port, force=False,
+                manifest_filename='loader_manifest.json',
+                no_watchdog=False,
+                bootloader=False):
     try:
         with open(manifest_filename, 'r') as manifest_file:
             manifest = json.load(manifest_file)
@@ -206,6 +222,13 @@ def load_device(port, force, manifest_filename='loader_manifest.json', no_watchd
 
     target_impl = loader_implementation(target)
     print(target_impl)
+
+    if bootloader:
+        print('starting boot loader')
+        loader_bootloader(target)
+        target.close()
+        print('Either upload firmware file (uf2) or power cycle device to exit bootloader mode.')
+        return
 
     # clean up files that do not belong here.
     existing_files = loader_ls(target)
@@ -276,6 +299,9 @@ def main():
     parser = argparse.ArgumentParser(
         prog='Loader',
         description='Load an application to a micropython device')
+    parser.add_argument('--bootloader',
+                        action='store_true',
+                        help='restart device in boot loader mode')
     parser.add_argument('--force',
                         action='store_true',
                         help='force all files to be replaced')
@@ -288,6 +314,10 @@ def main():
                         help='name of manifest file',
                         default='loader_manifest.json')
     args = parser.parse_args()
+    if 'bootloader' in args:
+        bootloader = args.bootloader
+    else:
+        bootloader = False
     if 'force' in args:
         force = args.force
     else:
@@ -319,7 +349,11 @@ def main():
         sys.exit(1)
 
     print(f'Loading device on {picow_port}...')
-    load_device(picow_port, force, manifest_filename=args.manifest_filename, no_watchdog=no_watchdog)
+    load_device(picow_port,
+                force,
+                manifest_filename=args.manifest_filename,
+                no_watchdog=no_watchdog,
+                bootloader=bootloader)
 
 
 if __name__ == "__main__":

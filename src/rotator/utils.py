@@ -22,10 +22,12 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.3'  # 2025-12-29
+__version__ = '0.9.4'  # 2025-12-29
 
 import sys
 import time
+
+BITS = bytes([0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4])
 
 upython = sys.implementation.name == 'micropython'
 if upython:
@@ -42,11 +44,16 @@ else:
     micropython = _MP()
 
 
-BITS = bytes([0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4])
-
+@micropython.native
 def get_timestamp(tt=None):
     if tt is None:
         tt = time.gmtime()
+    return f'{tt[0]:04d}-{tt[1]:02d}-{tt[2]:02d} {tt[3]:02d}:{tt[4]:02d}:{tt[5]:02d}Z'
+
+
+@micropython.native
+def get_timestamp_from_secs(secs=None):
+    tt = time.gmtime(secs)
     return f'{tt[0]:04d}-{tt[1]:02d}-{tt[2]:02d} {tt[3]:02d}:{tt[4]:02d}:{tt[5]:02d}Z'
 
 

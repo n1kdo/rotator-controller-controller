@@ -3,7 +3,7 @@
 #
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.10.0'  # 2025-12-23
+__version__ = '0.10.2'  # 2025-12-31
 #
 # Copyright 2024, 2025, J. B. Otterson N1KDO.
 #
@@ -106,6 +106,9 @@ class PicowNetwork:
     def get_netmask(self):
         return self._netmask
 
+    def is_connected(self):
+        return self._connected
+
     async def set_message(self, message: str, status:int = 0) -> None:
         self._message = message
         self._status = status
@@ -193,10 +196,11 @@ class PicowNetwork:
             logging.debug('Connecting to WLAN...6', 'PicowNetwork:connect_to_network')
             await sleep(0.1)
 
+            logging.info(f'scanning for best signal for SSID "{self._ssid}".', 'PicowNetwork:connect_to_network')
             # scan ssid option is not documented.  Using it here to reduce the result set size.
             # see https://github.com/micropython/micropython/blob/master/extmod/network_cyw43.c#L192
             try:
-                scan_results = self._wlan.scan(ssid=self._ssid)
+                scan_results = self._wlan.scan(ssid=self._ssid, passive=True)
             except OSError as ose:
                 scan_results = []
                 logging.exception('WiFi scan() failed', 'PicowNetwork:connect_to_network', ose)
@@ -210,7 +214,7 @@ class PicowNetwork:
                 scan_rssi = result[3]
                 scan_security = result[4]
                 scan_hidden = result[5]
-                logging.debug(f'Found SSID "{scan_ssid}", BSSID "{scan_bssid}", channel {scan_channel}, RSSI {scan_rssi}, security {scan_security}, hidden {scan_hidden}',
+                logging.info(f'Found SSID "{scan_ssid}", BSSID "{scan_bssid}", channel {scan_channel}, RSSI {scan_rssi}, security {scan_security}, hidden {scan_hidden}',
                               'PicowNetwork:connect_to_network')
                 if scan_ssid == self._ssid:
                     if scan_rssi > best_rssi:
@@ -218,7 +222,7 @@ class PicowNetwork:
                         bssid = result[1]
             if bssid is not None:
                 bssid_str = ''.join([f'{b:02x}' for b in bssid])
-                logging.debug(f'Found best RSSI for SSID "{self._ssid}" on BSSID "{bssid_str}" RSSI {best_rssi}',
+                logging.info(f'Found best RSSI for SSID "{self._ssid}" on BSSID "{bssid_str}" RSSI {best_rssi}',
                               'PicowNetwork:connect_to_network')
             else:
                 logging.warning('cannot find SSID in scan', 'PicowNetwork:connect_to_network')
