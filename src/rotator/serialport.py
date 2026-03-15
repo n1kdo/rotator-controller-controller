@@ -24,7 +24,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.0'
+__version__ = '0.9.1'
 
 # disable pylint import error
 # pylint: disable=E0401
@@ -44,12 +44,16 @@ class SerialPort:
         if impl_name == 'cpython':
             if name == '':
                 name = 'com1:'
-            self.port = serial.Serial(port=name,
-                                      baudrate=baudrate,
-                                      parity=serial.PARITY_NONE,
-                                      bytesize=serial.EIGHTBITS,
-                                      stopbits=serial.STOPBITS_ONE,
-                                      timeout=timeout)
+            try:
+                self.port = serial.Serial(port=name,
+                                          baudrate=baudrate,
+                                          parity=serial.PARITY_NONE,
+                                          bytesize=serial.EIGHTBITS,
+                                          stopbits=serial.STOPBITS_ONE,
+                                          timeout=timeout)
+            except Exception as e:
+                print(f'cannot open {name}, error: {e}')
+                raise
             # reliable at 0.040 for 4800
         elif impl_name == 'micropython':
             if name == '':
