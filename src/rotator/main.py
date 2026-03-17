@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = """
-Copyright 2022, 2025, J. B. Otterson N1KDO.
+Copyright 2022, 2025, 2026 J. B. Otterson N1KDO.
 Redistribution and use in source and binary forms, with or without modification, 
 are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice, 
@@ -23,7 +23,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.1.1'  # 2026-01-01
+__version__ = '0.2.0'  # 2026-03-15
 
 import asyncio
 import gc
@@ -35,7 +35,7 @@ from http_server import (HttpServer,
                          HTTP_STATUS_OK, HTTP_STATUS_BAD_REQUEST, HTTP_STATUS_CONFLICT,
                          HTTP_VERB_GET, HTTP_VERB_POST)
 from morse_code import MorseCode
-import n1mm_udp
+from n1mm_rotator_udp import RotatorData, calculate_broadcast_address, ReceiveBroadcastsFromN1MM, SendBroadcastFromN1MM
 from dcu1_rotator import Rotator
 from utils import milliseconds, safe_int, upython
 from picow_network import PicowNetwork
@@ -57,18 +57,80 @@ CONFIG_FILE = 'data/config.json'
 CONTENT_DIR = 'content/'
 DEFAULT_SECRET = 'NorthSouth'
 DEFAULT_SSID = 'Rotator'
-DEFAULT_TCP_PORT = 73
+DEFAULT_TCP_PORT_1 = 73
+DEFAULT_TCP_PORT_2 = 88
 DEFAULT_WEB_PORT = 80
 
 N1MM_ROTOR_BROADCAST_PORT = 12040
 N1MM_BROADCAST_FROM_ROTOR_PORT = 13010
 
 # globals
+config = {}
 keep_running = True
-rotator = None
+rotator_1 = None
+rotator_2 = None
 
 # http server
 http_server = HttpServer(content_dir=CONTENT_DIR)
+
+class RotatorTelnetServer:
+    def __init__(self, rotator):
+        self._rotator = rotator
+
+    async def serve_serial_client(self, reader, writer):
+        """
+        this provides serial compatible control.
+        use com0com with com2tcp to interface legacy apps on Windows.
+
+        this code provides a serial endpoint that implements part of the DCU-3 protocol.
+
+        all commands start with 'A'
+        all commands end with ';' or CR (ascii 13)
+        """
+        requested = -1
+        t0 = milliseconds()
+        partner = writer.get_extra_info('peername')[0]
+        logging.info(f'serial client connected from {partner}', 'main:connect_to_network')
+        buffer = []
+
+        try:
+            while True:
+                data = await reader.read(1)
+                if data is None:
+                    break
+                else:
+                    if len(data) == 1:
+                        b = data[0]
+                        if b == ord('A'):  # commands always start with A, so reset the buffer.
+                            buffer = [b]
+                        else:
+                            if len(buffer) < 8:  # anti-gibberish test
+                                buffer.append(b)
+                                if b == ord(';') or b == 13:  # command terminator
+                                    command = ''.join(map(chr, buffer))
+                                    if command in ('AI1;', 'AI1\r'):  # get direction
+                                        bearing = await self._rotator.get_rotator_bearing()
+                                        response = f';{bearing:03n}'
+                                        writer.write(response.encode('UTF-8'))
+                                        await writer.drain()
+                                    elif command.startswith('AP1') and command[
+                                        -1] == '\r':  # set bearing and move rotator
+                                        requested = safe_int(command[3:-1], -1)
+                                        if 0 <= requested <= 360:
+                                            await self._rotator.set_rotator_bearing(requested)
+                                    elif command.startswith('AP1') and command[-1] == ';':  # set bearing
+                                        requested = safe_int(command[3:-1], -1)
+                                    elif command == 'AM1;' and 0 <= requested <= 360:  # move rotator
+                                        await self._rotator.set_rotator_bearing(requested)
+            writer.close()
+            await writer.wait_closed()
+            gc.collect()
+
+        except Exception as exc:
+            logging.exception('exception in serve_serial_client:', 'RotatorTelnetServer:serve_serial_client', exc_info=exc)
+        tc = milliseconds()
+        logging.info(f'serial client disconnected, elapsed time {(tc - t0) / 1000.0:6.3f} seconds',
+                     'RotatorTelnetServer:serve_serial_client')
 
 
 def read_config():
@@ -86,9 +148,11 @@ def read_config():
             'netmask': '255.255.255.0',
             'gateway': '192.168.1.1',
             'dns_server': '8.8.8.8',
-            'hostname': 'rotator',
+            'rotor_1_name': 'rotator1',
+            'rotor_2_name': '',  # blank is permitted here.
             'n1mm': False,
-            'tcp_port': '73',
+            'tcp_port_1': '73',
+            'tcp_port_2': '-1',
             'web_port': '80',
         }
     return config
@@ -97,61 +161,6 @@ def read_config():
 def save_config(config):
     with open(CONFIG_FILE, 'w') as config_file:
         json.dump(config, config_file)
-
-
-async def serve_serial_client(reader, writer):
-    """
-    this provides serial compatible control.
-    use com0com with com2tcp to interface legacy apps on Windows.
-
-    this code provides a serial endpoint that implements part of the DCU-3 protocol.
-
-    all commands start with 'A'
-    all commands end with ';' or CR (ascii 13)
-    """
-    requested = -1
-    t0 = milliseconds()
-    partner = writer.get_extra_info('peername')[0]
-    logging.info(f'serial client connected from {partner}', 'main:connect_to_network')
-    buffer = []
-
-    try:
-        while True:
-            data = await reader.read(1)
-            if data is None:
-                break
-            else:
-                if len(data) == 1:
-                    b = data[0]
-                    if b == ord('A'):  # commands always start with A, so reset the buffer.
-                        buffer = [b]
-                    else:
-                        if len(buffer) < 8:  # anti-gibberish test
-                            buffer.append(b)
-                            if b == ord(';') or b == 13:  # command terminator
-                                command = ''.join(map(chr, buffer))
-                                if command in ('AI1;', 'AI1\r'):  # get direction
-                                    bearing = await rotator.get_rotator_bearing()
-                                    response = f';{bearing:03n}'
-                                    writer.write(response.encode('UTF-8'))
-                                    await writer.drain()
-                                elif command.startswith('AP1') and command[-1] == '\r':  # set bearing and move rotator
-                                    requested = safe_int(command[3:-1], -1)
-                                    if 0 <= requested <= 360:
-                                        await rotator.set_rotator_bearing(requested)
-                                elif command.startswith('AP1') and command[-1] == ';':  # set bearing
-                                    requested = safe_int(command[3:-1], -1)
-                                elif command == 'AM1;' and 0 <= requested <= 360:  # move rotator
-                                    await rotator.set_rotator_bearing(requested)
-        writer.close()
-        await writer.wait_closed()
-        gc.collect()
-
-    except Exception as exc:
-        logging.exception('exception in serve_serial_client:', 'main:serve_serial_client', exc_info=exc)
-    tc = milliseconds()
-    logging.info(f'serial client disconnected, elapsed time {(tc - t0) / 1000.0:6.3f} seconds',
-                 'main:serve_serial_client')
 
 
 # noinspection PyUnusedLocal
@@ -175,11 +184,19 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         config = read_config()
         dirty = False
         errors = False
-        tcp_port = args.get('tcp_port')
+        tcp_port = args.get('tcp_port_1')
         if tcp_port is not None:
             tcp_port_int = safe_int(tcp_port, -2)
             if 0 <= tcp_port_int <= 65535:
-                config['tcp_port'] = tcp_port
+                config['tcp_port_1'] = tcp_port
+                dirty = True
+            else:
+                errors = True
+        tcp_port = args.get('tcp_port_2')
+        if tcp_port is not None:
+            tcp_port_int = safe_int(tcp_port, -2)
+            if 0 <= tcp_port_int <= 65535:
+                config['tcp_port_2'] = tcp_port
                 dirty = True
             else:
                 errors = True
@@ -234,9 +251,13 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
             dhcp = dhcp_arg == 1
             config['dhcp'] = dhcp
             dirty = True
-        hostname = args.get('hostname')
-        if hostname is not None:
-            config['hostname'] = hostname
+        rotor_1_name = args.get('rotor_1_name')
+        if rotor_1_name is not None:
+            config['rotor_1_name'] = rotor_1_name
+            dirty = True
+        rotor_2_name = args.get('rotor_2_name')
+        if rotor_2_name is not None:
+            config['rotor_2_name'] = rotor_2_name
             dirty = True
         ip_address = args.get('ip_address')
         if ip_address is not None:
@@ -292,14 +313,27 @@ async def api_restart_callback(http, verb, args, reader, writer, request_headers
 @http_server.route(b'/api/bearing')
 async def api_bearing_callback(http, verb, args, reader, writer, request_headers=None):
     requested_bearing = args.get('set')
+    rotor_number = args.get('rotor', '1')
+    if rotor_number == '1':
+        rotator = rotator_1
+        rotor_name = config.get('rotor_1_name')
+    elif rotor_number == '2':
+        rotator = rotator_2
+        rotor_name = config.get('rotor_2_name')
+    else:
+        response = b'parameter out of range\r\n'
+        http_status = 400
+        bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+        return bytes_sent, http_status
+
     if requested_bearing:
         try:
             requested_bearing = int(requested_bearing)
             if 0 <= requested_bearing <= 360:
                 bearing = await rotator.set_rotator_bearing(requested_bearing)
                 http_status = 200
-                response = f'{bearing}\r\n'.encode('utf-8')
-                bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+                response = f'{{\r\n  "bearing": {bearing},\r\n  "rotor": "{rotor_name}"\r\n}}\r\n'.encode('utf-8')
+                bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
             else:
                 http_status = 400
                 response = b'parameter out of range\r\n'
@@ -311,17 +345,18 @@ async def api_bearing_callback(http, verb, args, reader, writer, request_headers
     else:
         bearing = await rotator.get_rotator_bearing()
         http_status = 200
-        response = f'{bearing}\r\n'.encode('utf-8')
-        bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+        response = f'{{\r\n  "bearing": {bearing},\r\n  "rotor": "{rotor_name}"\r\n}}\r\n'.encode('utf-8')
+        bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     return bytes_sent, http_status
 
 
 async def main():
-    global keep_running, rotator
+    global config, keep_running, rotator_1, rotator_2
 
     config = read_config()
 
-    rotator = Rotator()
+    rotator_1 = Rotator('0')
+    rotator_2 = Rotator('1')
 
     if upython:
         picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET)
@@ -332,9 +367,12 @@ async def main():
         morse_code_sender = None
         morse_code_sender_task = None
 
-    tcp_port = safe_int(config.get('tcp_port') or DEFAULT_TCP_PORT, DEFAULT_TCP_PORT)
-    if tcp_port < 0 or tcp_port > 65535:
-        tcp_port = DEFAULT_TCP_PORT
+    tcp_port_1 = safe_int(config.get('tcp_port_1') or DEFAULT_TCP_PORT_1, DEFAULT_TCP_PORT_1)
+    if tcp_port_1 < 0 or tcp_port_1 > 65535:
+        tcp_port_1 = DEFAULT_TCP_PORT_1
+    tcp_port_2 = safe_int(config.get('tcp_port_2') or DEFAULT_TCP_PORT_2, DEFAULT_TCP_PORT_2)
+    if tcp_port_2 < 0 or tcp_port_2 > 65535:
+        tcp_port_2 = DEFAULT_TCP_PORT_2
     web_port = safe_int(config.get('web_port') or DEFAULT_WEB_PORT, DEFAULT_WEB_PORT)
     if web_port < 0 or web_port > 65535:
         web_port = DEFAULT_WEB_PORT
@@ -375,28 +413,34 @@ async def main():
             newly_connected = False
             logging.info(f'Starting web service on port {web_port}', 'main:main')
             asyncio.create_task(asyncio.start_server(http_server.serve_http_client, '0.0.0.0', web_port))
-            logging.info(f'Starting tcp service on port {tcp_port}', 'main:main')
-            asyncio.create_task(asyncio.start_server(serve_serial_client, '0.0.0.0', tcp_port))
-
+            logging.info(f'Starting tcp service on port {tcp_port_1}', 'main:main')
+            rotator_1_telnet_server = RotatorTelnetServer(rotator_1)
+            asyncio.create_task(asyncio.start_server(rotator_1_telnet_server.serve_serial_client, '0.0.0.0', tcp_port_1))
+            if tcp_port_2 > 0:
+                logging.info(f'Starting tcp service on port {tcp_port_2}', 'main:main')
+                rotator_2_telnet_server = RotatorTelnetServer(rotator_2)
+                asyncio.create_task(asyncio.start_server(rotator_2_telnet_server.serve_serial_client,
+                                                         '0.0.0.0',
+                                                         tcp_port_2))
             n1mm_mode = config.get('n1mm')
             if n1mm_mode and not ap_mode:
-                hostname = config.get('hostname')
+                rotator_1_data = RotatorData(rotator_1, config.get('rotor_1_name'))
+                rotator_2_data = RotatorData(rotator_2, config.get('rotor_2_name'))
+                rotators_data = [rotator_1_data, rotator_2_data]
                 logging.info(f'configuring N1MM Mode with ip address {ip_address} net mask {netmask}',
                              'main:main')
-                broadcast_address = n1mm_udp.calculate_broadcast_address(ip_address, netmask)
+                broadcast_address = calculate_broadcast_address(ip_address, netmask)
                 logging.info(f'Broadcast address (to N1MM) is {broadcast_address}', 'main:main')
                 logging.info(f'Starting rotor position broadcasts for N1MM on port {N1MM_BROADCAST_FROM_ROTOR_PORT}',
                              'main:main')
-                send_broadcast_from_n1mm = n1mm_udp.SendBroadcastFromN1MM(broadcast_address,
-                                                                          target_port=N1MM_BROADCAST_FROM_ROTOR_PORT,
-                                                                          rotator=rotator,
-                                                                          my_name=hostname)
+                send_broadcast_from_n1mm = SendBroadcastFromN1MM(broadcast_address,
+                                                                target_port=N1MM_BROADCAST_FROM_ROTOR_PORT,
+                                                                rotators_data=rotators_data)
                 logging.info(f'Starting listener for UDP position broadcasts from N1MM on port {N1MM_ROTOR_BROADCAST_PORT}',
                              'main:main')
-                receive_broadcast_from_n1mm = n1mm_udp.ReceiveBroadcastsFromN1MM(ip_address,
-                                                                                 receive_port=N1MM_ROTOR_BROADCAST_PORT,
-                                                                                 rotator=rotator,
-                                                                                 my_name=hostname)
+                receive_broadcast_from_n1mm = ReceiveBroadcastsFromN1MM(ip_address,
+                                                                        receive_port=N1MM_ROTOR_BROADCAST_PORT,
+                                                                        rotators_data=rotators_data)
                 n1mm_sender = asyncio.create_task(send_broadcast_from_n1mm.send_datagrams())
                 n1mm_receiver = asyncio.create_task(receive_broadcast_from_n1mm.wait_for_datagram())
 
@@ -420,8 +464,8 @@ async def main():
 
 
 if __name__ == '__main__':
-    logging.loglevel = logging.INFO
-    #logging.loglevel = logging.DEBUG
+    #logging.loglevel = logging.INFO
+    logging.loglevel = logging.DEBUG
     logging.info('starting', 'main:__main__')
 
     try:

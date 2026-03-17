@@ -8,7 +8,7 @@
     "main.py",
     "micro_logging.py",
     "morse_code.py",
-    "n1mm_udp.py",
+    "n1mm_rotator_udp.py",
     "picow_network.py",
     "serialport.py",
     "utils.py",

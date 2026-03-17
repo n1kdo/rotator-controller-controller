@@ -39,21 +39,6 @@
         width: 400px;
     }
 
-    .files_link {
-        font-size: 8pt;
-        font-weight: bold;
-        color: black;
-        text-align: left;
-        position: absolute;
-        top: 340px;
-        width: 50px;
-    }
-
-    .files_link a:link, .files_link a:visited, .files_link a:hover {
-        color: blue;
-        text-decoration: none;
-    }
-
     form {
         display: table;
     }
@@ -106,8 +91,25 @@
         text-align: right;
         width: 40%;
     }
+
+    .bottom_links {
+        font-size: 8pt;
+        font-weight: bold;
+        color: black;
+        text-align: left;
+        position: absolute;
+        top: 340px;
+    }
+
+    .bottom_links a:link, .bottom_links a:visited, .bottom_links a:hover {
+        color: blue;
+        text-decoration: none;
+        padding-right: 4px;
+    }
+
 </style>
 <script>
+    document.addEventListener("DOMContentLoaded", page_load);
 
     function page_load() {
         get_config();
@@ -136,7 +138,8 @@
             secret = config.secret;
         }
         document.getElementById("secret_input").value = secret;
-        document.getElementById("tcp_port_input").value = config.tcp_port;
+        document.getElementById("tcp_port_1_input").value = config.tcp_port_1;
+        document.getElementById("tcp_port_2_input").value = config.tcp_port_2;
         document.getElementById("web_port_input").value = config.web_port;
         document.getElementById("n1mm_input").checked = config.n1mm;
         let dhcp = config.dhcp
@@ -144,7 +147,8 @@
         let ip_address_element = document.getElementById("ip_address_input");
         ip_address_element.value = config.ip_address;
         ip_address_element.disabled = dhcp;
-        document.getElementById("hostname_input").value = config.hostname;
+        document.getElementById("rotor_1_name_input").value = config.rotor_1_name;
+        document.getElementById("rotor_2_name_input").value = config.rotor_2_name;
         let netmask_element = document.getElementById("netmask_input")
         netmask_element.value = config.netmask;
         netmask_element.disabled = dhcp;
@@ -159,13 +163,15 @@
     function set_config() {
         let ssid = document.getElementById("ssid_input").value
         let secret = document.getElementById("secret_input").value
-        let tcp_port = document.getElementById("tcp_port_input").value
+        let tcp_port_1 = document.getElementById("tcp_port_1_input").value
+        let tcp_port_2 = document.getElementById("tcp_port_2_input").value
         let web_port = document.getElementById("web_port_input").value
         let dhcp = document.getElementById("dhcp_input").checked;
         let dhcp_val = dhcp ? 1 : 0;
         let n1mm = document.getElementById("n1mm_input").checked;
         let n1mm_val = n1mm ? 1 : 0;
-        let hostname = document.getElementById("hostname_input").value;
+        let rotor_1_name = document.getElementById("rotor_1_name_input").value;
+        let rotor_2_name = document.getElementById("rotor_2_name_input").value;
         let ip_address = document.getElementById("ip_address_input").value;
         let netmask = document.getElementById("netmask_input").value;
         let gateway = document.getElementById("gateway_input").value;
@@ -178,18 +184,31 @@
             alert("Invalid Secret");
             return;
         }
-        let x = parseInt(tcp_port);
-        if (x < 0 || x > 65535) {
-            alert("Invalid TCP Port");
+        let x1 = parseInt(tcp_port_1);
+        if (x1 < 0 || x1 > 65535) {
+            alert("Invalid TCP Port 1");
             return;
         }
-        x = parseInt(web_port);
+        let x2 = parseInt(tcp_port_2);
+        if (x2 < 0 || x2 > 65535) {
+            alert("Invalid TCP Port 2");
+            return;
+        }
+        if (x1 === x2) {
+            alert("cannot reuse rotor TCP port number");
+            return;
+        }
+        let x = parseInt(web_port);
         if (x < 0 || x > 65535) {
             alert("Invalid Web Port");
             return;
         }
-        if ((hostname.length < 1) || (hostname.length > 16) || (/\s/.test(hostname))) {
-            alert("Invalid hostname")
+        if ((rotor_1_name.length < 1) || (rotor_1_name.length > 16) || (/\s/.test(rotor_1_name))) {
+            alert("Invalid Rotor 1 Name")
+        }
+        //if ((rotor_2_name.length < 1) || (rotor_2_name.length > 16) || (/\s/.test(rotor_2_name))) {
+        if ((rotor_2_name.length > 16) || (/\s/.test(rotor_2_name))) {  // empty is permitted here, no rotor
+            alert("Invalid Rotor 2 Name")
         }
         // should validate static IP parameters here
         if (!dhcp) {
@@ -215,11 +234,13 @@
         config.ap_mode = 0;
         config.SSID = ssid;
         config.secret = secret;
-        config.tcp_port = tcp_port;
+        config.tcp_port_1 = tcp_port_1;
+        config.tcp_port_2 = tcp_port_2;
         config.web_port = web_port;
         config.n1mm = n1mm_val;
         config.dhcp = dhcp_val;
-        config.hostname = hostname;
+        config.rotor_1_name = rotor_1_name;
+        config.rotor_2_name = rotor_2_name;
         config.ip_address = ip_address;
         config.netmask = netmask;
         config.gateway = gateway;
@@ -277,7 +298,7 @@
     }
 
 </script>
-<body onload="page_load()">
+<body>
 <div class="header">Setup</div>
 <div class="config_form">
         <form>
@@ -290,35 +311,39 @@
                 <input type="password" id="secret_input" maxlength="64">
             </p>
             <p>
-                <label for="tcp_port_input">TCP Port:</label>
-                <input type="number" id="tcp_port_input" min="0" max="65535">
-            </p>
-            <p>
                 <label for="web_port_input">Web Port:</label>
                 <input type="number" id="web_port_input" min="0" max="65535"/>
             </p>
             <p>
-                <label for="n1mm_input">N1MM Broadcasts:</label>
+                <label for="n1mm_input">N1MM Mode:</label>
                 <input type="checkbox" id="n1mm_input"/>
+            </p>
+            <p>
+                <label for="rotor_1_name_input">Rotor 1 Name:</label>
+                <input type="text" id="rotor_1_name_input" maxlength="64">
+                <label for="tcp_port_1_input">TCP Port:</label>
+                <input type="number" id="tcp_port_1_input" min="0" max="65535">
+            </p>
+            <p>
+                <label for="rotor_2_name_input">Rotor 2 Name:</label>
+                <input type="text" id="rotor_2_name_input" maxlength="64">
+                <label for="tcp_port_2_input">TCP Port:</label>
+                <input type="number" id="tcp_port_2_input" min="0" max="65535">
             </p>
             <p>
                 <label for="dhcp_input">Use DHCP:</label>
                 <input type="checkbox" id="dhcp_input" onchange="dhcp_change()"/>
             </p>
             <p>
-                <label for="hostname_input">Hostname:</label>
-                <input type="text" id="hostname_input" maxlength="64">
-            </p>
-            <p>
                 <label for="ip_address_input">IP Address:</label>
                 <input type="text" id="ip_address_input" maxlength="16" pattern="^(?!0)(?!.*\.$)((1?\d?\d|25[0-5]|2[0-4]\d)(\.|$)){4}$"/>
             </p>
             <p>
-                <label for="netmask_input">Network Mask:</label>
+                <label for="netmask_input">Net Mask:</label>
                 <input type="text" id="netmask_input" maxlength="16" pattern="^(?!0)(?!.*\.$)((1?\d?\d|25[0-5]|2[0-4]\d)(\.|$)){4}$"/>
             </p>
             <p>
-                <label for="gateway_input">Gateway Address:</label>
+                <label for="gateway_input">Gateway IP:</label>
                 <input type="text" id="gateway_input" maxlength="16" pattern="^(?!0)(?!.*\.$)((1?\d?\d|25[0-5]|2[0-4]\d)(\.|$)){4}$"/>
             </p>
             <p>
@@ -338,7 +363,12 @@
             </p>
         </div>
 </div>
-<div class="files_link"><a href="files.html">Files</a></div>
-<div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20230603</div>
+    <div class="bottom_links">
+        <a href="/rotator.html?rotor=1">Rotor 1</a>
+        <a href="/rotator.html?rotor=2">Rotor 2</a>
+        <a href="/setup.html" style="color:red">Setup</a>
+        <a href="files.html">Files</a>
+    </div>
+<div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20260316</div>
 </body>
 </html>

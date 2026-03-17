@@ -71,6 +71,12 @@
         width: 200px;
     }
 
+    .rotor_name {
+        text-align: center;
+        font-size: 12pt;
+        font-weight: bold;
+    }
+
     /* Clear floats after the columns */
     .row:after {
         content: "";
@@ -80,7 +86,7 @@
 
     #readout {
         position: absolute;
-        top: 30px;
+        top: 48px;
     }
 
     div.refresh_radio {
@@ -128,21 +134,6 @@
         color: red;
     }
 
-    .setup {
-        font-size: 8pt;
-        font-weight: bold;
-        color: black;
-        text-align: left;
-        position: absolute;
-        top: 340px;
-        width: 2px;
-    }
-
-    .setup a:link, .setup a:visited, .setup a:hover {
-        color: blue;
-        text-decoration: none;
-    }
-
     #turn_button {
         background-color: #4b4;
         border-radius: 4px;
@@ -152,6 +143,26 @@
     #turn_button:hover {
         background-color: red;
     }
+
+    .bottom_links {
+        font-size: 8pt;
+        font-weight: bold;
+        color: black;
+        text-align: left;
+        position: absolute;
+        top: 340px;
+    }
+
+    .bottom_links a:link, .bottom_links a:visited, .bottom_links a:hover {
+        color: blue;
+        text-decoration: none;
+        padding-right: 4px;
+    }
+
+    .selected {
+        color: red;
+        padding-right: 4px;
+    }
 </style>
 <!--suppress JSUnusedLocalSymbols -->
 <script>
@@ -159,8 +170,26 @@
     let changed_count = 0;
     let update_secs = 0;
     let update_timeout = 0;
+    let rotor_number = 1;
+
+    document.addEventListener("DOMContentLoaded", page_load);
 
     function page_load() {
+        // look to see if update time is set in url search string
+        const params = new URLSearchParams(window.location.search);
+        const i = Number(params.get("update"));
+        if ([0, 1, 5, 60].includes(i)) {
+            update_secs = i;
+        }
+
+        const r = Number(params.get("rotor"));
+        if ([1, 2].includes(r)) {
+            rotor_number = r;
+        }
+
+        const ename = "rotor-" + rotor_number + "-link";
+        //document.getElementById(ename).className = "selected";
+        document.getElementById(ename).style = "color: red";
         // update the pointer and direction readout
         get_bearing();
 
@@ -188,7 +217,9 @@
             clearTimeout(update_timeout)
             update_timeout = 0;
         }
-        let bearing = parseInt(message)
+        let data = JSON.parse(message);
+        let bearing = data.bearing;
+        let rotor_name = data.rotor;
         let pointer = document.querySelector('#pointer');
         let set_update_secs;
         // set the pointer and make it visible
@@ -205,6 +236,7 @@
 
         // set the bearing readout
         document.getElementById('current_bearing').innerHTML = String(bearing);
+        document.getElementById('rotor_name').innerHTML = rotor_name;
 
         // automatic refresh logic
         if (changed_count > 0) {
@@ -226,7 +258,6 @@
         document.getElementById('refresh_radio_1').checked = (set_update_secs === 1);
         document.getElementById('refresh_radio_5').checked = (set_update_secs === 5);
         document.getElementById('refresh_radio_60').checked = (set_update_secs === 60);
-
     }
 
     function process_set_bearing_response(message) {
@@ -248,7 +279,7 @@
                 process_get_bearing_response(xmlHttp.responseText);
             }
         }
-        xmlHttp.open("GET", "/api/bearing", true);
+        xmlHttp.open("GET", "/api/bearing?rotor=" + rotor_number, true);
         xmlHttp.send();
     }
 
@@ -264,7 +295,7 @@
                 process_set_bearing_response(xmlHttp.responseText);
             }
         }
-        let payload = "set=" + requested;
+        let payload = "set=" + requested + "&rotor=" + rotor_number;
         xmlHttp.open("POST", "/api/bearing", true);
         xmlHttp.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
         xmlHttp.send(payload);
@@ -282,10 +313,11 @@
         }
     }
 </script>
-<body onload="page_load()">
+<body>
 <div class="header">Web Rotator Controller</div>
 <div class="row">
     <div class="left_column">
+        <div class="rotor_name" id="rotor_name">&nbsp;</div>
         <img class="compassbg" src="/compass-background.png" width=200" height="200"/>
         <div id="readout">
             <svg id="dial">
@@ -309,7 +341,11 @@
             <input type="button" onclick="move_to(270)" value="270" class="rotate_button" style="top:140px; left:5px;"/>
             <input type="button" onclick="move_to(315)" value="315" class="rotate_button" style="top:60px; left:35px;"/>
         </div>
-        <div class="setup"><a href="/setup.html">Setup</a></div>
+        <div class="bottom_links">
+            <a href="/rotator.html?rotor=1" id="rotor-1-link">Rotor 1</a>
+            <a href="/rotator.html?rotor=2" id="rotor-2-link">Rotor 2</a>
+            <a href="/setup.html">Setup</a>
+        </div>
     </div>
     <div class="right_column">
         <p class="bearing_readout" id="current_bearing">&nbsp;</p>
@@ -329,7 +365,7 @@
             <input type="radio" name="refresh_radio" id="refresh_radio_60" value="60" onclick="set_refresh(60)"/>
             <label for="refresh_radio_60">1 minute</label><br>
         </div>
-        <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20230114</div>
+        <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20260316</div>
     </div>
 </div>
 </body>

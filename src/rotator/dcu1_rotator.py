@@ -25,7 +25,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.0'
+__version__ = '0.9.1'  # 2026-03-15 support serial port name.
 
 # disable pylint import error
 # pylint: disable=E0401
@@ -43,7 +43,7 @@ class Rotator:
     ERROR_BUSY = -13
     ERROR_UNKNOWN = -99
 
-    def __init__(self, primitive=False):
+    def __init__(self, portName=None, primitive=False):
         """
         set up rotator control class
         :param primitive: set this true if rotor control is not Rotor-EZ or Green Heron
@@ -53,7 +53,7 @@ class Rotator:
         self.buffer = bytearray(16)
         self.last_bearing = Rotator.ERROR_UNKNOWN
         self.last_requested_bearing = Rotator.ERROR_UNKNOWN
-        self.serial_port = SerialPort(baudrate=Rotator.BAUD_RATE, timeout=0)
+        self.serial_port = SerialPort(name=portName, baudrate=Rotator.BAUD_RATE, timeout=0)
         self.initialized = False
         self.serial_port_locked = False
 
