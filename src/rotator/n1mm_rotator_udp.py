@@ -83,8 +83,7 @@ class SendBroadcastFromN1MM:
         while self.run:
             for rotator_data in self.rotators_data:
                 bearing = await rotator_data.rotator.get_rotator_bearing()
-                message = f'{rotator_data.rotator_name} @ {bearing * 10}'  # TODO make this into bytes
-                #message = '%s @ %d' % (self.my_name, bearing)
+                message = f'{rotator_data.rotator_name} @ {bearing * 10}'
                 self.send(message)
                 await asyncio.sleep(0.050)
             await asyncio.sleep(1.50)
