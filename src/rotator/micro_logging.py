@@ -3,7 +3,7 @@
 #
 __author__ = 'J. B. Otterson'
 __copyright__ = """
-Copyright 2024, 2025 J. B. Otterson N1KDO.
+Copyright 2024, 2025, 2026 J. B. Otterson N1KDO.
 Redistribution and use in source and binary forms, with or without modification, 
 are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice, 
@@ -22,7 +22,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.0.9'
+__version__ = '0.1.4'  # 2026-05-25
 
 from utils import get_timestamp, upython
 
@@ -36,24 +36,24 @@ WARNING = const(3)
 ERROR = const(2)
 CRITICAL = const(1)
 NOTHING = const(0)
+LEVEL_NAMES = ('NOTHING', 'CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG')
 
 loglevel = ERROR
 
-level_names = ['NOTHING', 'CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG']
-
 
 def set_level(level):
-    info(f'setting log level to {level}', 'micro_logging:set_level')
-
     global loglevel
     if isinstance(level, str):
+        level = level.upper()
         try:
-            level = level_names.index(level)
+            level = LEVEL_NAMES.index(level)
         except ValueError:
             level = None
 
     if isinstance(level, int):
         if NOTHING <= level <= DEBUG:
+            if loglevel >= INFO or level >= INFO:
+                _log('[INFO]     ', f'setting log level to {LEVEL_NAMES[level]}', 'micro_logging:set_level')
             loglevel = level
 
 
@@ -62,42 +62,44 @@ def set_level(level):
 def should_log(level):
     return level <= loglevel
 
-def _log(level: str, message: str, caller=None):
-    level = '[' + level + ']'
+
+def _log(level: str, message: str|bytes, caller:str = None):
+    if isinstance(message, bytes):
+        message = message.decode('utf-8', errors='replace')
     if caller is None:
-        print(f'{get_timestamp()} {level:<11s} {message}')
+        print(get_timestamp(), level, message)
     else:
-        print(f'{get_timestamp()} {level:<11s} [{caller}] {message}')
+        print(get_timestamp(), ' ', level, ' [', caller, '] ', message, sep='')
 
 
-def debug(message, caller=None):
+def debug(message: str|bytes, caller: str = None):
     if loglevel >= DEBUG:
-        _log('DEBUG', message, caller)
+        _log('[DEBUG]    ', message, caller)
 
 
-def info(message, caller=None):
+def info(message: str|bytes, caller: str = None):
     if loglevel >= INFO:
-        _log('INFO', message, caller)
+        _log('[INFO]     ', message, caller)
 
 
-def warning(message, caller=None):
+def warning(message: str|bytes, caller: str = None):
     if loglevel >= WARNING:
-        _log('WARNING', message, caller)
+        _log('[WARNING]  ', message, caller)
 
 
-def error(message, caller=None):
+def error(message: str|bytes, caller: str = None):
     if loglevel >= ERROR:
-        _log('ERROR', message, caller)
+        _log('[ERROR]    ', message, caller)
 
 
-def exception(message:str, caller:str = None, exc_info:Exception = None) -> None:
+def exception(message: str|bytes, caller:str = None, exc_info:Exception = None) -> None:
     if exc_info is not None:
-        _log('EXCEPTION', f'{message} {type(exc_info)} {exc_info}', caller)
+        _log('[EXCEPTION]', f'{message} {type(exc_info)} {exc_info}', caller)
     else:
-        _log('EXCEPTION', message, caller)
+        _log('[EXCEPTION]', message, caller)
 
 
-def critical(message, caller=None):
+def critical(message: str| bytes, caller: str = None):
     if loglevel >= CRITICAL:
-        _log('CRITICAL', message, caller)
+        _log('[CRITICAL] ', message, caller)
 

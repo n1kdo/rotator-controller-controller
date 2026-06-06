@@ -1,7 +1,7 @@
 #!/bin/env python3
 __author__ = 'J. B. Otterson'
 __copyright__ = """
-Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.
+Copyright 2022, 2024, 2025, 2026 J. B. Otterson N1KDO.
 Redistribution and use in source and binary forms, with or without modification, 
 are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice, 
@@ -20,7 +20,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.10.7'  # 2025-12-31
+__version__ = '0.10.8'  # 2026-04-27
 
 """
 Note: to edit linux forced device names, edit
@@ -314,19 +314,11 @@ def main():
                         help='name of manifest file',
                         default='loader_manifest.json')
     args = parser.parse_args()
-    if 'bootloader' in args:
-        bootloader = args.bootloader
-    else:
-        bootloader = False
-    if 'force' in args:
-        force = args.force
-    else:
-        force = False
-    if 'no_watchdog' in args:
-        no_watchdog = args.no_watchdog
-    else:
-        no_watchdog = False
-    if 'port' in args and args.port is not None:
+    bootloader = args.bootloader
+    force = args.force
+    no_watchdog = args.no_watchdog
+
+    if args.port is not None:
         picow_port = args.port
     else:
         print('Disconnect the Pico-W if it is connected.')
