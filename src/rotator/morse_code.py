@@ -23,7 +23,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.6'  # 2025-12-29
+__version__ = '0.9.7'  # 2026-04-27
 
 # disable pylint import error
 # pylint: disable=E0401
@@ -33,7 +33,7 @@ import micro_logging as logging
 
 
 class MorseCode:
-    MORSE_PERIOD = 15  # x 10 to MS: the speed of the morse code is set by the dit length of 150 ms.
+    MORSE_PERIOD = 150  # the speed of the morse code is set by the dit length of 150 ms.
     MORSE_DIT = MORSE_PERIOD
     MORSE_ESP = MORSE_DIT  # inter-element space
     MORSE_DAH = 3 * MORSE_PERIOD
@@ -83,7 +83,11 @@ class MorseCode:
         morse_esp = self.MORSE_ESP
         morse_lsp = self.MORSE_LSP
         led = self.led
-        sleep = asyncio.sleep
+        try:
+            sleep_ms = asyncio.sleep_ms
+        except AttributeError:
+            async def sleep_ms(ms):
+                await asyncio.sleep(ms / 1000)
         patterns = self.MORSE_PATTERNS
 
         while self.keep_running:
@@ -97,9 +101,8 @@ class MorseCode:
                     blink_pattern = patterns.get(' ')
                 for blink_time in blink_pattern:
                     if blink_time > 0:
-                        # blink time is in milliseconds!, but data is in 10 msec
                         led.on()
-                        await sleep(blink_time / 100)  # dit or dah
+                        await sleep_ms(blink_time)  # dit or dah
                         led.off()
-                    await sleep(morse_esp / 100)  # dit length element space
-                await sleep(morse_lsp / 100)  # + inter-letter space
+                    await sleep_ms(morse_esp)  # dit length element space
+                await sleep_ms(morse_lsp)  # + inter-letter space

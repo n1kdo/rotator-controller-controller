@@ -3,7 +3,7 @@
 #
 __author__ = 'J. B. Otterson'
 __copyright__ = """
-Copyright 2023, 2025 J. B. Otterson N1KDO.
+Copyright 2023, 2025, 2026 J. B. Otterson N1KDO.
 Redistribution and use in source and binary forms, with or without modification, 
 are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice, 
@@ -22,7 +22,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.4'  # 2025-12-29
+__version__ = '0.9.5'  # 2026-05-29
 
 import sys
 import time
@@ -76,6 +76,9 @@ def safe_int(value, default:int=-1) -> int:
 @micropython.native
 def num_bits_set(n: int) -> int:
     #       0000 0001 0010 0011 0100 0101 0110 0111 1000 1001 1010 1011 1100 1101 1111
+    if not isinstance(n, int):
+        raise TypeError(f"num_bits_set expects an integer, got {type(n).__name__}")
+
     nn = n
     set_bits = 0
     while nn:
