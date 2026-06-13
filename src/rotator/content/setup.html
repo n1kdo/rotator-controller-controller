@@ -206,8 +206,8 @@
         if ((rotor_1_name.length < 1) || (rotor_1_name.length > 16) || (/\s/.test(rotor_1_name))) {
             alert("Invalid Rotor 1 Name")
         }
-        //if ((rotor_2_name.length < 1) || (rotor_2_name.length > 16) || (/\s/.test(rotor_2_name))) {
-        if ((rotor_2_name.length > 16) || (/\s/.test(rotor_2_name))) {  // empty is permitted here, no rotor
+        // an empty name for rotor #2 is allowed, it indicates no rotor 2 is present
+        if (rotor_2_name.length > 16) {  // empty is permitted here, no rotor
             alert("Invalid Rotor 2 Name")
         }
         // should validate static IP parameters here
@@ -369,6 +369,6 @@
         <a href="/setup.html" style="color:red">Setup</a>
         <a href="files.html">Files</a>
     </div>
-<div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20260316</div>
+<div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20260613</div>
 </body>
 </html>
