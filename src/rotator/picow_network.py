@@ -58,6 +58,7 @@ class PicowNetwork:
                  default_secret: str = 'PICO-WIFI',
                  message_func=None,
                  long_messages=False) -> None:
+        self._access_points = None
         self._connected = False
         self._connecting = False
         self._default_secret = default_secret
@@ -101,6 +102,9 @@ class PicowNetwork:
         self._wlan = None
         asyncio.create_task(self.keep_alive())
 
+    def get_access_points(self):
+        return self._access_points
+
     def get_ip_address(self):
         return self._ip_address
 
@@ -118,6 +122,42 @@ class PicowNetwork:
                 await self._message_func(self._message, self._status)
             except Exception as exc:
                 logging.exception('set_message failed', 'PicowNetwork:set_message', exc)
+
+    async def _scan(self, ssid=None):
+        if self._wlan is None or not self._wlan.active():
+            return []
+        access_points = []
+        try:
+            scan_results = self._wlan.scan(passive=True, ssid=ssid)
+        except OSError as ose:
+            logging.exception('WiFi scan() failed', 'PicowNetwork:scan', ose)
+            return access_points
+
+        for result in scan_results:
+            scan_ssid = result[0].decode('utf-8', 'replace')
+            scan_bssid = result[1]
+            scan_channel = result[2]
+            scan_rssi = result[3]
+            scan_security = result[4]
+            scan_hidden = result[5]
+
+            if logging.should_log(logging.DEBUG):
+                scan_bssid_str = ''.join([f'{b:02x}' for b in scan_bssid])
+                logging.debug(
+                    f'Found SSID "{scan_ssid}", BSSID "{scan_bssid_str}", channel {scan_channel}, RSSI {scan_rssi}, security {scan_security}, hidden {scan_hidden}',
+                    'PicowNetwork:get_access_points')
+
+            access_point = {
+                'ssid': scan_ssid,
+                'bssid': scan_bssid,
+                'channel': scan_channel,
+                'rssi': scan_rssi,
+                'security': scan_security,
+                'hidden': scan_hidden
+            }
+            access_points.append(access_point)
+        access_points = sorted(access_points, key=lambda access_point: access_point['rssi'], reverse=True)
+        return access_points
 
     async def _connect(self) -> None:
         network.country('US')
@@ -171,6 +211,7 @@ class PicowNetwork:
             logging.info(f'  ssid={self._wlan.config("ssid")}', 'PicowNetwork:connect_to_network')
             logging.debug(f'  key={self._default_secret}', 'PicowNetwork:connect_to_network')
             logging.info(f'  ipconfig addr4={self._wlan.ipconfig("addr4")}', 'PicowNetwork:connect_to_network')
+            self._access_points = self._scan()
             self._connected = True
         else:
             if self._long_messages:
@@ -205,29 +246,21 @@ class PicowNetwork:
             logging.info(f'scanning for best signal for SSID "{self._ssid}".', 'PicowNetwork:connect_to_network')
             # scan ssid option is not documented.  Using it here to reduce the result set size.
             # see https://github.com/micropython/micropython/blob/master/extmod/network_cyw43.c#L192
-            try:
-                scan_results = self._wlan.scan(ssid=self._ssid, passive=True)
-            except OSError as ose:
-                scan_results = []
-                logging.exception('WiFi scan() failed', 'PicowNetwork:connect_to_network', ose)
+            self._access_points = await self._scan()
+
             logging.debug('Connecting to WLAN...7', 'PicowNetwork:connect_to_network')
             bssid = None
             best_rssi = -100
-            for result in scan_results:
-                scan_ssid = result[0].decode('utf-8', 'replace')
-                scan_bssid = ''.join([f'{b:02x}' for b in result[1]])
-                scan_channel = result[2]
-                scan_rssi = result[3]
-                scan_security = result[4]
-                scan_hidden = result[5]
-                if logging.should_log(logging.DEBUG):
-                    logging.debug(
-                        f'Found SSID "{scan_ssid}", BSSID "{scan_bssid}", channel {scan_channel}, RSSI {scan_rssi}, security {scan_security}, hidden {scan_hidden}',
-                        'PicowNetwork:connect_to_network')
-                if scan_ssid == self._ssid:
-                    if scan_rssi > best_rssi:
-                        best_rssi = scan_rssi
-                        bssid = result[1]
+            for access_point in self._access_points:
+                if access_point['ssid'] == self._ssid:
+                    if logging.should_log(logging.DEBUG):
+                        bssid_str = ''.join([f'{b:02x}' for b in access_point['bssid']])
+                        logging.debug(
+                            f'Found SSID "{access_point['ssid']}", BSSID "{bssid_str}", channel {access_point['channel']}, RSSI {access_point['rssi']}, security {access_point['security']}, hidden {access_point['hidden']}',
+                            'PicowNetwork:connect_to_network')
+                    if access_point['rssi'] > best_rssi:
+                        best_rssi = access_point['rssi']
+                        bssid = access_point['bssid']
             if bssid is not None:
                 bssid_str = ''.join([f'{b:02x}' for b in bssid])
                 logging.info(f'Found best RSSI for SSID "{self._ssid}" on BSSID "{bssid_str}" RSSI {best_rssi}',

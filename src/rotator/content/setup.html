@@ -132,7 +132,18 @@
 
     function process_get_config_response(message) {
         let config = JSON.parse(message);
+        const ssids_datalist = document.getElementById("ssid_list");
+        const ssids = config["SSIDs"];
+        ssids_datalist.innerHTML = "";
+
+        ssids.forEach(ssid => {
+            const option = document.createElement('option');
+            option.value = ssid;
+            ssids_datalist.appendChild(option);
+        });
+
         document.getElementById("ssid_input").value = config.SSID;
+
         let secret = "";
         if (config.secret !== undefined) {
             secret = config.secret;
@@ -304,7 +315,8 @@
         <form>
             <p>
                 <label for="ssid_input">SSID:</label>
-                <input type="text" id="ssid_input" maxlength="64">
+                <input type="text" id="ssid_input" maxlength="64" list="ssid_list">
+                <datalist id="ssid_list"></datalist>
             </p>
             <p>
                 <label for="secret_input">Secret:</label>

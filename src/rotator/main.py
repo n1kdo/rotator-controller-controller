@@ -70,6 +70,9 @@ keep_running = True
 rotator_1 = None
 rotator_2 = None
 
+# picow_network
+picow_network = None
+
 # http server
 http_server = HttpServer(content_dir=CONTENT_DIR)
 
@@ -142,7 +145,8 @@ def read_config():
                           'main:read_config', exc_info= ex)
         config = {
             'SSID': 'set your SSID here',
-            'secret': 'secret', 
+            'secret': 'secret',
+            'ap_mode': False,
             'dhcp': True,
             'ip_address': '192.168.1.73',
             'netmask': '255.255.255.0',
@@ -176,7 +180,17 @@ async def slash_callback(http, verb, args, reader, writer, request_headers=None)
 async def api_config_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/api/config'
     if verb == HTTP_VERB_GET:
         payload = read_config()
-        # payload.pop('secret')  # do not return the secret
+        payload.pop('secret')  # do not return the secret in the api response.
+        if picow_network is not None:
+            access_points = picow_network.get_access_points()
+            # reduce to just the names...
+            ssids = set()
+            for access_point in access_points:
+                ssids.add(access_point['ssid'])
+            payload['SSIDs'] = list(ssids)
+        else:
+            payload['SSIDs'] = []
+
         response = json.dumps(payload).encode('utf-8')
         http_status = 200
         bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
@@ -351,9 +365,13 @@ async def api_bearing_callback(http, verb, args, reader, writer, request_headers
 
 
 async def main():
-    global config, keep_running, rotator_1, rotator_2
+    global config, keep_running, picow_network, rotator_1, rotator_2
 
     config = read_config()
+
+    if reset_button.value() == 0:
+        # device was powered up with button pressed, select AP mode.
+        config['ap_mode'] = True
 
     rotator_1 = Rotator('0')
     rotator_2 = Rotator('1')
@@ -379,35 +397,30 @@ async def main():
 
     connected = False
     newly_connected = False
-    reset_button_pressed_count = 0
-    four_count = 0
     last_message = ''
     ap_mode = config.get('ap_mode', False)
     while keep_running:
-        await asyncio.sleep(0.25)
-        four_count += 1
-        if four_count > 3:
-            four_count = 0
-            if picow_network is not None:
-                if not connected:
-                    logging.debug('checking network connection', 'main:main')
-                    connected = picow_network.is_connected()
-                    if connected:
-                        ip_address = picow_network.get_ip_address()
-                        netmask = picow_network.get_netmask()
-                        logging.info(f'ip_address {ip_address}, netmask {netmask}', 'main:main')
-                        newly_connected = True
-                    else:
-                        logging.info('waiting for picow network', 'main:main')
-            else:
-                ip_address = socket.gethostbyname_ex(socket.gethostname())[2][-1]
-                netmask = '255.255.255.0'
-                connected = True
-                newly_connected = True
+        await asyncio.sleep(1.0)
+        if picow_network is not None:
+            if not connected:
+                logging.debug('checking network connection', 'main:main')
+                connected = picow_network.is_connected()
+                if connected:
+                    ip_address = picow_network.get_ip_address()
+                    netmask = picow_network.get_netmask()
+                    logging.info(f'ip_address {ip_address}, netmask {netmask}', 'main:main')
+                    newly_connected = True
+                else:
+                    logging.info('waiting for picow network', 'main:main')
+        else:
+            ip_address = socket.gethostbyname_ex(socket.gethostname())[2][-1]
+            netmask = '255.255.255.0'
+            connected = True
+            newly_connected = True
 
-            if picow_network is not None and picow_network.get_message() != last_message:
-                last_message = picow_network.get_message()
-                morse_code_sender.set_message(last_message)
+        if picow_network is not None and picow_network.get_message() != last_message:
+            last_message = picow_network.get_message()
+            morse_code_sender.set_message(last_message)
 
         if newly_connected:
             newly_connected = False
@@ -444,28 +457,17 @@ async def main():
                 n1mm_sender = asyncio.create_task(send_broadcast_from_n1mm.send_datagrams())
                 n1mm_receiver = asyncio.create_task(receive_broadcast_from_n1mm.wait_for_datagram())
 
-        if upython:
-            pressed = reset_button.value() == 0
-            if pressed:
-                reset_button_pressed_count += 1
-            else:
-                if reset_button_pressed_count > 0:
-                    reset_button_pressed_count -= 1
-            if reset_button_pressed_count > 7:
-
-                logging.info('reset button pressed', 'main:main')
-                ap_mode = not ap_mode
-                config['ap_mode'] = ap_mode
-                save_config(config)
-                keep_running = False
 
     if upython:
         machine.soft_reset()
+    else:
+        if morse_code_sender_task is not None:
+            morse_code_sender_task.cancel()
 
 
 if __name__ == '__main__':
     logging.loglevel = logging.INFO
-    #logging.loglevel = logging.DEBUG
+    logging.loglevel = logging.DEBUG  # TODO FIXME don't commit this at DEBUG
     logging.info('starting', 'main:__main__')
 
     try:
