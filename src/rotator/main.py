@@ -190,10 +190,8 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
             payload['SSIDs'] = list(ssids)
         else:
             payload['SSIDs'] = []
-
-        response = json.dumps(payload).encode('utf-8')
         http_status = 200
-        bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
+        bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, payload)
     elif verb == HTTP_VERB_POST:
         config = read_config()
         dirty = False
@@ -467,7 +465,7 @@ async def main():
 
 if __name__ == '__main__':
     logging.loglevel = logging.INFO
-    logging.loglevel = logging.DEBUG  # TODO FIXME don't commit this at DEBUG
+    # logging.loglevel = logging.DEBUG
     logging.info('starting', 'main:__main__')
 
     try:

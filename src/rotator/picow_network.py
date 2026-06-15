@@ -123,7 +123,7 @@ class PicowNetwork:
             except Exception as exc:
                 logging.exception('set_message failed', 'PicowNetwork:set_message', exc)
 
-    async def _scan(self, ssid=None):
+    def _scan(self, ssid=None):
         if self._wlan is None or not self._wlan.active():
             return []
         access_points = []
@@ -192,10 +192,13 @@ class PicowNetwork:
                     await self.set_message('ERROR ', -10)
                 logging.error('Failed to set hostname.', 'PicowNetwork:connect_to_network')
 
+            self._access_points = self._scan()
+
             # security choices are 'SEC_OPEN', 'SEC_WPA2_WPA3', 'SEC_WPA3', 'SEC_WPA_WPA2'
             # see https://github.com/micropython/micropython/blob/master/extmod/network_cyw43.c#L584
             # Access Point mode always uses security and always uses the default secret.
-            security = network.WLAN.SEC_WPA2_WPA3  # CYW43_AUTH_WPA2_AES_PSK
+            #security = network.WLAN.SEC_WPA2_WPA3  # CYW43_AUTH_WPA2_AES_PSK
+            security = network.WLAN.SEC_WPA_WPA2  # appears to work with win10
 
             mac_addr = self._wlan.config('mac')
             mac = ''
@@ -211,7 +214,6 @@ class PicowNetwork:
             logging.info(f'  ssid={self._wlan.config("ssid")}', 'PicowNetwork:connect_to_network')
             logging.debug(f'  key={self._default_secret}', 'PicowNetwork:connect_to_network')
             logging.info(f'  ipconfig addr4={self._wlan.ipconfig("addr4")}', 'PicowNetwork:connect_to_network')
-            self._access_points = self._scan()
             self._connected = True
         else:
             if self._long_messages:
@@ -246,7 +248,7 @@ class PicowNetwork:
             logging.info(f'scanning for best signal for SSID "{self._ssid}".', 'PicowNetwork:connect_to_network')
             # scan ssid option is not documented.  Using it here to reduce the result set size.
             # see https://github.com/micropython/micropython/blob/master/extmod/network_cyw43.c#L192
-            self._access_points = await self._scan()
+            self._access_points = self._scan()
 
             logging.debug('Connecting to WLAN...7', 'PicowNetwork:connect_to_network')
             bssid = None
