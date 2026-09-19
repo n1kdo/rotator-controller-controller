@@ -1,7 +1,7 @@
 #!/bin/env python3
 __author__ = 'J. B. Otterson'
 __copyright__ = """
-Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.
+Copyright 2022, 2024, 2025, 2026 J. B. Otterson N1KDO.
 Redistribution and use in source and binary forms, with or without modification, 
 are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice, 
@@ -20,7 +20,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.10.7'  # 2025-12-31
+__version__ = '0.10.9'  # 2026-09-04
 
 """
 Note: to edit linux forced device names, edit
@@ -88,11 +88,17 @@ def put_file(filename, target, source_directory='.', src_file_name=None):
     else:
         try:
             os.stat(src_file_name)
+        except OSError:
+            print(f'cannot find source file {src_file_name}')
+            return False
+        try:
             print(f'sending file {src_file_name} to {filename}')
             target.fs_put(src_file_name, filename, progress_callback=put_file_progress_callback)
             print()
-        except OSError:
-            print(f'cannot find source file {src_file_name}')
+        except (OSError, SerialException) as exc:
+            # a transient USB/serial glitch surfaces here; the local file is fine.
+            # the next loader run re-sends any partially written file (sha1 mismatch).
+            print(f'error sending {src_file_name}: {exc}')
             return False
     return True
 
@@ -138,12 +144,9 @@ for f in uos.ilistdir('{src}'):
 
 
 def loader_reset(target):
-    files_data = BytesConcatenator()
-    cmd = f"""import machine
-machine.reset()
-"""
-    target.exec_(cmd, data_consumer=files_data.write_bytes)
-
+    time.sleep(2)
+    target.serial.write(b"\x04")  # control-D -- restart
+    time.sleep(2)
 
 def loader_sha1(target, file=''):
     hash_data = BytesConcatenator()
@@ -203,20 +206,23 @@ def load_device(port, force=False,
             restart = True
 
     if restart:
+        disconnected = False
         try:
+            target.close()
+            disconnected = True
             print('resetting target device...')
-            loader_reset(target)
         except SerialException as e:
+            print('got serial exception, must have disconnected...')
+            disconnected = True
             time.sleep(3)
-        else:
-            print('expected disconnect on reset, something is wrong?')
 
-        try:
-            print('reconnecting to target device...')
-            target = Pyboard(port, _BAUD_RATE)
-        except PyboardError:
-            print(f'cannot connect to device {port}')
-            sys.exit(1)
+        if disconnected:
+            try:
+                print('reconnecting to target device...')
+                target = Pyboard(port, _BAUD_RATE)
+            except PyboardError:
+                print(f'cannot connect to device {port}')
+                sys.exit(1)
 
         target.enter_raw_repl()
 
@@ -314,19 +320,11 @@ def main():
                         help='name of manifest file',
                         default='loader_manifest.json')
     args = parser.parse_args()
-    if 'bootloader' in args:
-        bootloader = args.bootloader
-    else:
-        bootloader = False
-    if 'force' in args:
-        force = args.force
-    else:
-        force = False
-    if 'no_watchdog' in args:
-        no_watchdog = args.no_watchdog
-    else:
-        no_watchdog = False
-    if 'port' in args and args.port is not None:
+    bootloader = args.bootloader
+    force = args.force
+    no_watchdog = args.no_watchdog
+
+    if args.port is not None:
         picow_port = args.port
     else:
         print('Disconnect the Pico-W if it is connected.')

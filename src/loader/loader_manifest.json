@@ -3,6 +3,9 @@
   "files": [
     "content/",
     "data/",
+    "cached_config_data.py",
+    "compatible_json.py",
+    "config_data.py",
     "dcu1_rotator.py",
     "http_server.py",
     "main.py",

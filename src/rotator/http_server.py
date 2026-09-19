@@ -23,17 +23,21 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.1.16'  # 2026-05-29
+__version__ = '0.1.22'  # 2026-09-03
 
 import asyncio
-import gc
-import json
 import os
 import re
 import micro_logging as logging
 
-from utils import milliseconds, safe_int, upython
-if not upython:
+from utils import milliseconds, elapsed_ms, safe_int, upython, LineReader
+if upython:
+    import json
+    from asyncio import TimeoutError
+else:
+    import compatible_json as json
+    from asyncio.exceptions import TimeoutError
+
     def const(i):
         return i
 
@@ -52,6 +56,8 @@ HTTP_STATUS_INTERNAL_SERVER_ERROR = const(500)
 
 HTTP_VERB_GET = b'GET'
 HTTP_VERB_POST = b'POST'
+_HTTP_VERBS = (HTTP_VERB_GET, HTTP_VERB_POST)
+_HTTP_PROTOCOLS = (b'HTTP/1.0', b'HTTP/1.1')
 
 _BUFFER_SIZE = const(4096)
 _MP_START_BOUND = const(1)
@@ -60,6 +66,8 @@ _MP_DATA = const(3)
 _MP_END_BOUND = const(4)
 
 _MAX_UPLOAD_SIZE = const(65536)  # biggest allowed file upload.
+_REQUEST_TIMEOUT = const(30)  # seconds to wait for the client's request.
+_MAX_HEADERS = const(32)  # reject requests with more headers than this.
 DOTS = '..'
 SEP = '/'
 
@@ -75,6 +83,31 @@ def _safe_content_path(content_dir: str, filename: str) -> str:
     else:
         joined = content_dir + SEP + filename
     return joined
+
+
+class _WriterCounter:
+    # Per-request wrapper that counts the bytes handed to write().  Lets _handle_request
+    # know whether a failing callback had already started sending its response, in which
+    # case an error page can no longer be sent without corrupting the stream.
+    def __init__(self, writer):
+        self._writer = writer
+        self.bytes_written = 0
+
+    def write(self, data):
+        self.bytes_written += len(data)
+        self._writer.write(data)
+
+    async def drain(self):
+        await self._writer.drain()
+
+    def close(self):
+        self._writer.close()
+
+    async def wait_closed(self):
+        await self._writer.wait_closed()
+
+    def get_extra_info(self, name):
+        return self._writer.get_extra_info(name)
 
 
 class HttpServer:
@@ -135,15 +168,15 @@ class HttpServer:
 
     def route(self, uri):
         if isinstance(uri, str):
-            logging.warning(f'uri {uri} is str not bytes', 'http_server:add_uri_callback')
-            uri = uri.encode('utf-8')
+            logging.error(f'uri {uri} is str not bytes', 'http_server:route')
+            raise RuntimeError(f'uri {uri} is str not bytes')
 
         def decorator(func):
             self.uri_map[uri] = func
             return func
         return decorator
 
-    async def serve_content(self, writer, filename):
+    async def serve_content(self, writer, filename : str):
         try:
             filename = _safe_content_path(self.content_dir, filename)
         except ValueError:
@@ -165,8 +198,9 @@ class HttpServer:
             async with self._content_lock:
                 with open(filename, 'rb', buffering=_BUFFER_SIZE) as infile:
                     bytes_since_drain = 0
-                    # Drain after roughly 16 KB or at EOF to reduce syscall overhead while preventing buffer bloat.
-                    drain_threshold = _BUFFER_SIZE * 4
+                    # Drain after every chunk so the asyncio write buffer never holds more than one
+                    # chunk at a time; keeps peak memory low on the Pico-W regardless of file size.
+                    drain_threshold = _BUFFER_SIZE
                     while True:
                         bytes_read = infile.readinto(self.buffer)
                         if bytes_read:
@@ -191,7 +225,10 @@ class HttpServer:
         if content_type is not None and len(content_type) > 0:
             writer.write(b'Content-type: ')
             writer.write(content_type)
-            writer.write(b'; charset=UTF-8\r\n')
+            if content_type in (HttpServer.CT_TEXT_TEXT, HttpServer.CT_TEXT_HTML, HttpServer.CT_APP_JSON):
+                writer.write(b'; charset=UTF-8\r\n')
+            else:
+                writer.write(b'\r\n')
         if response_size >= 0:
             writer.write(b'Content-length: %d\r\n' % response_size)
         if extra_headers is not None:
@@ -203,28 +240,31 @@ class HttpServer:
 
     async def send_simple_response(self, writer, http_status=HTTP_STATUS_OK, content_type=b'', response=None, extra_headers=None):
         content_length = 0
-        typ = type(response)
         if response is None:
-            await self.start_response(writer, http_status, content_type, 0, extra_headers)
-        elif typ == bytes:
-            content_length = len(response)
             await self.start_response(writer, http_status, content_type, content_length, extra_headers)
-            if response is not None and len(response) > 0:
-                writer.write(response)
-        elif typ in [dict, list]:
-            response = json.dumps(response).encode('utf-8')
-            content_length = len(response)
-            content_type = HttpServer.CT_APP_JSON
-            await self.start_response(writer, http_status, content_type, content_length, extra_headers)
-            if content_length > 0:
-                writer.write(response)
         else:
-            logging.error(f'trying to serialize {typ} response.', 'http_server:send_simple_response')
+            if isinstance(response, str):
+                response = response.encode()
+            if isinstance(response, bytes):
+                content_length = len(response)
+                await self.start_response(writer, http_status, content_type, content_length, extra_headers)
+                if response is not None and len(response) > 0:
+                    writer.write(response)
+            elif isinstance(response, dict) or isinstance(response, list):
+                response = json.dumps(response).encode('utf-8')  # yes, need to send bytes here.
+                content_length = len(response)
+                content_type = HttpServer.CT_APP_JSON
+                await self.start_response(writer, http_status, content_type, content_length, extra_headers)
+                if content_length > 0:
+                    writer.write(response)
+            else:
+                logging.error(f'trying to serialize response of type {type(response)}.',
+                              'http_server:send_simple_response')
         await writer.drain()
         return content_length
 
     @classmethod
-    def url_unquote(cls, s):
+    def url_unquote(cls, s : str):
         s = s.replace('+', ' ')
         res = s.split('%')
         for i in range(1, len(res)):
@@ -233,25 +273,42 @@ class HttpServer:
                 res[i] = chr(int(item[:2], 16)) + item[2:]
             except ValueError:
                 res[i] = '%' + item
-        return "".join(res)
+        return ''.join(res)
 
     @classmethod
-    def unpack_args(cls, value):
+    def unpack_args(cls, value : bytes):
+        """
+        accept a byte string and unpack it into a dict(str, str)
+        """
         if not value:
             return {}
-        # Accept bytes or str; decode only if needed to avoid extra allocations and errors.
-        if isinstance(value, bytes):
-            value = value.decode()
         args = {}
-        args_list = value.split('&')
+        args_list = value.split(b'&')
         for arg in args_list:
-            arg_parts = arg.split('=', 1)
+            arg_parts = arg.split(b'=', 1)
             if len(arg_parts) == 2:
-                args[cls.url_unquote(arg_parts[0])] = cls.url_unquote(arg_parts[1])
+                args[cls.url_unquote(arg_parts[0].decode())] = cls.url_unquote(arg_parts[1].decode())
+        if logging.should_log(logging.DEBUG):
+            logging.debug(f'unpack_args: {value} -> {args}', 'http_server:unpack_args')
         return args
 
     async def serve_http_client(self, reader, writer):
-        gc.collect()
+        partner = writer.get_extra_info('peername')[0]
+        try:
+            await self._handle_request(reader, writer)
+        except Exception as ex:
+            # don't let a bad client or a callback exception leak the socket;
+            # the connection is simply closed in the finally block below.
+            logging.exception(f'exception serving {partner}',
+                              'http_server:serve_http_client', ex)
+        finally:
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except Exception:
+                pass  # the peer may have gone away already.
+
+    async def _handle_request(self, reader, writer):
         # micropython.mem_info()
         t0 = milliseconds()
         http_status = HTTP_STATUS_INTERNAL_SERVER_ERROR
@@ -259,10 +316,20 @@ class HttpServer:
         partner = writer.get_extra_info('peername')[0]
         if logging.should_log(logging.DEBUG):
             logging.debug(f'web client connected from {partner}', 'http_server:serve_http_client')
-        request_line = await reader.readline()
+        lines = LineReader(reader, max_line_length=_BUFFER_SIZE)
+        try:
+            request_line = await asyncio.wait_for(lines.readline(), _REQUEST_TIMEOUT)  # returns bytes
+        except TimeoutError:
+            logging.info(f'client {partner} timed out sending the request line', 'http_server:_handle_request')
+            return
+        except ValueError:  # request line exceeded LineReader's limit
+            http_status = HTTP_STATUS_BAD_REQUEST
+            response = b'request line too long'
+            bytes_sent = await self.send_simple_response(writer, http_status, self.CT_TEXT_HTML, response)
+            return
         request = request_line.strip()
         if logging.should_log(logging.DEBUG):
-            logging.debug(f'request: {request}', 'http_server:serve_http_client')
+            logging.debug(b'request: %s' % request, 'http_server:serve_http_client')
         pieces = request.split(b' ')
         if len(pieces) != 3:  # does the http request line look approximately correct?
             http_status = HTTP_STATUS_BAD_REQUEST
@@ -280,12 +347,12 @@ class HttpServer:
                 query_args = pieces[1]
             else:
                 query_args = b''
-            if verb not in [HTTP_VERB_GET, HTTP_VERB_POST]:
+            if verb not in _HTTP_VERBS:
                 http_status = HTTP_STATUS_BAD_REQUEST
                 logging.warning(f'Bad request, wrong verb {verb}', 'http_server:serve_http_client')
                 response = b'<html><body><p>only GET and POST are supported</p></body></html>'
                 bytes_sent = await self.send_simple_response(writer, http_status, self.CT_TEXT_HTML, response)
-            elif protocol not in {b'HTTP/1.0', b'HTTP/1.1'}:
+            elif protocol not in _HTTP_PROTOCOLS:
                 logging.warning(f'bad request, wrong http protocol {protocol}', 'http_server:serve_http_client')
                 http_status = HTTP_STATUS_BAD_REQUEST
                 response = b'protocol %s is not supported' % protocol
@@ -295,9 +362,38 @@ class HttpServer:
                 request_content_length = 0
                 request_content_type = b''
                 request_headers = {}
+                dispatch = True
+                header_count = 0
                 while True:
-                    header = await reader.readline()
+                    header_count += 1
+                    if header_count > _MAX_HEADERS:
+                        http_status = HTTP_STATUS_BAD_REQUEST
+                        response = b'too many request headers'
+                        bytes_sent = await self.send_simple_response(writer, http_status, self.CT_TEXT_TEXT, response)
+                        dispatch = False
+                        break
+                    try:
+                        header = await asyncio.wait_for(lines.readline(), _REQUEST_TIMEOUT)
+                    except TimeoutError:
+                        logging.info(f'client {partner} timed out sending headers', 'http_server:_handle_request')
+                        http_status = HTTP_STATUS_BAD_REQUEST
+                        response = b'request timed out'
+                        bytes_sent = await self.send_simple_response(writer, http_status, self.CT_TEXT_TEXT, response)
+                        dispatch = False
+                        break
+                    except ValueError:  # header line exceeded LineReader's limit
+                        http_status = HTTP_STATUS_BAD_REQUEST
+                        response = b'header line too long'
+                        bytes_sent = await self.send_simple_response(writer, http_status, self.CT_TEXT_TEXT, response)
+                        dispatch = False
+                        break
                     if header in (b'', b'\r\n'):
+                        break
+                    if not header.endswith(b'\n'):  # EOF arrived mid-header; the line is truncated.
+                        http_status = HTTP_STATUS_BAD_REQUEST
+                        response = b'malformed request headers'
+                        bytes_sent = await self.send_simple_response(writer, http_status, self.CT_TEXT_TEXT, response)
+                        dispatch = False
                         break
                     # process headers.  look for those we are interested in.
                     if b':' not in header:  # ignore malformed header
@@ -311,59 +407,76 @@ class HttpServer:
                     elif header_name == b'content-type':
                         request_content_type = header_value
                 args = {}
-                if verb == HTTP_VERB_GET:
+                if dispatch and verb == HTTP_VERB_GET:
                     args = self.unpack_args(query_args)
-                elif verb == HTTP_VERB_POST:
+                elif dispatch and verb == HTTP_VERB_POST:
                     if request_content_length > 0:
                         if request_content_type.startswith(self.CT_APP_WWW_FORM) or request_content_type.startswith(self.CT_APP_JSON):
                             if request_content_length > _BUFFER_SIZE:
                                 http_status = HTTP_STATUS_CONTENT_TOO_LARGE
                                 response = b'POST payload too large'
                                 bytes_sent = await self.send_simple_response(writer, http_status, self.CT_TEXT_TEXT, response)
-                                verb = None  # prevent further processing
+                                dispatch = False  # prevent further processing
                             else:
-                                data = await reader.read(request_content_length)
-                                if request_content_type.startswith(self.CT_APP_WWW_FORM):
-                                    args = self.unpack_args(data)
-                                elif request_content_type.startswith(self.CT_APP_JSON):
-                                    try:
-                                        args = json.loads(data.decode())
-                                    except Exception as e:
-                                        args = {}
-                                        logging.error(f'cannot decode posted JSON "{data}": {e}',
-                                                      'http_server:serve_http_client')
+                                try:
+                                    data = await asyncio.wait_for(lines.readexactly(request_content_length), _REQUEST_TIMEOUT)
+                                except (EOFError, TimeoutError):
+                                    http_status = HTTP_STATUS_BAD_REQUEST
+                                    response = b'incomplete POST body'
+                                    bytes_sent = await self.send_simple_response(writer, http_status, self.CT_TEXT_TEXT, response)
+                                    dispatch = False
+                                else:
+                                    if request_content_type.startswith(self.CT_APP_WWW_FORM):
+                                        args = self.unpack_args(data)
+                                    elif request_content_type.startswith(self.CT_APP_JSON):
+                                        try:
+                                            args = json.loads(data)
+                                        except Exception as e:
+                                            args = {}
+                                            logging.error(f'cannot decode posted JSON "{data}": {e}',
+                                                          'http_server:serve_http_client')
                         elif not request_content_type.startswith(self.CT_MULTIPART_FORM):
                             logging.warning(f'warning: unhandled content_type {request_content_type}',
                                             'http_server:serve_http_client')
                             logging.warning(f'request_content_length={request_content_length}',
                                             'http_server:serve_http_client')
-                else:  # bad request
-                    http_status = HTTP_STATUS_BAD_REQUEST
-                    response = b'only GET and POST are supported'
-                    logging.warning(response, 'http_server:serve_http_client')
-                    bytes_sent = await self.send_simple_response(writer, http_status, self.CT_TEXT_TEXT, response)
 
-                if verb in (HTTP_VERB_GET, HTTP_VERB_POST):
-                    callback = self.uri_map.get(target)
-                    if callback is not None:
-                        bytes_sent, http_status = await callback(self, verb, args, reader, writer, request_headers)
-                    else:
-                        content_file = target[1:] if target.startswith(b'/') else target
-                        bytes_sent, http_status = await self.serve_content(writer, content_file.decode())
+                if dispatch:
+                    counting_writer = _WriterCounter(writer)
+                    try:
+                        callback = self.uri_map.get(target)
+                        if callback is not None:
+                            # pass the LineReader (not the raw stream) so callbacks that
+                            # read the request body get any bytes readline() pulled ahead.
+                            bytes_sent, http_status = await callback(self, verb, args, lines, counting_writer, request_headers)
+                        else:
+                            content_file = (target[1:] if target.startswith(b'/') else target).decode()  # filename must be str
+                            bytes_sent, http_status = await self.serve_content(counting_writer, content_file)
+                    except Exception as ex:
+                        logging.exception(f'exception serving {target} from {partner}: {type(ex)} {ex}',
+                                          'http_server:_handle_request', ex)
+                        if counting_writer.bytes_written == 0:
+                            # nothing has been sent yet, so the client can still get a proper error page.
+                            try:
+                                bytes_sent = await self.send_simple_response(writer, HTTP_STATUS_INTERNAL_SERVER_ERROR,
+                                                                             self.CT_TEXT_HTML,
+                                                                             b'<html><body><p>500 -- Internal Server Error.</p></body></html>')
+                            except Exception:
+                                pass  # socket is already broken; serve_http_client closes it.
+                        else:
+                            bytes_sent = counting_writer.bytes_written  # response was cut short mid-stream
+                        http_status = HTTP_STATUS_INTERNAL_SERVER_ERROR
 
         await writer.drain()
-        writer.close()
-        await writer.wait_closed()
-        elapsed = milliseconds() - t0
+        elapsed = elapsed_ms(t0)
         if logging.should_log(logging.INFO):
             logging.info(f'{partner} {request} {http_status} {bytes_sent} {elapsed} ms',
                          'http_server:serve_http_client')
-        gc.collect()
 
 #
 # common file operations callbacks, here because just about every app will use them...
 #
-def valid_filename(filename):
+def valid_filename(filename : str):
     if filename is None:
         return False
     match = re.match(r'^[A-Za-z0-9][A-Za-z0-9._-]*\.[A-Za-z0-9_-]+$', filename)
@@ -377,7 +490,7 @@ def valid_filename(filename):
     return True
 
 
-def file_size(filename):
+def file_size(filename : str):
     try:
         # note that micropython os.stat()does not return a named tuple, so cannot access with .st_size
         return safe_int(os.stat(filename)[6], -1)
@@ -401,7 +514,8 @@ async def api_get_files_callback(http, verb, args, reader, writer, request_heade
 # noinspection PyUnusedLocal
 async def api_upload_file_callback(http, verb, args, reader, writer, request_headers=None):
     if verb == HTTP_VERB_POST:
-        logging.debug('http post handler', 'http_server:api_upload_file_callback')
+        if logging.should_log(logging.DEBUG):
+            logging.debug('http post handler', 'http_server:api_upload_file_callback')
         boundary = None
         request_content_type = b''
         request_content_length = -1
@@ -443,11 +557,27 @@ async def api_upload_file_callback(http, verb, args, reader, writer, request_hea
                 state = _MP_START_BOUND
                 filename = None
                 output_file = None
+                part_filename = None
                 more_bytes = True
                 leftover_bytes = b''
                 try:
                     while more_bytes:
-                        buffer = await reader.read(_BUFFER_SIZE)
+                        try:
+                            buffer = await asyncio.wait_for(reader.read(_BUFFER_SIZE), _REQUEST_TIMEOUT)  # reader is a LineReader
+                        except TimeoutError:
+                            logging.warning(f'upload timed out after {request_content_length - remaining_content_length} '
+                                            f'of {request_content_length} bytes', 'http_server:api_upload_file_callback')
+                            response = b'upload timed out'
+                            http_status = HTTP_STATUS_BAD_REQUEST
+                            more_bytes = False
+                            break
+                        if len(buffer) == 0:  # peer closed early; don't spin forever.
+                            logging.warning(f'upload ended after {request_content_length - remaining_content_length} '
+                                            f'of {request_content_length} bytes', 'http_server:api_upload_file_callback')
+                            response = b'upload ended prematurely'
+                            http_status = HTTP_STATUS_INTERNAL_SERVER_ERROR
+                            more_bytes = False
+                            break
                         remaining_content_length -= len(buffer)
                         if remaining_content_length <= 0:
                             more_bytes = False
@@ -459,20 +589,23 @@ async def api_upload_file_callback(http, verb, args, reader, writer, request_hea
                             if state == _MP_DATA:
                                 if not output_file:
                                     output_filename = _safe_content_path(http.content_dir, 'uploaded_' + str(filename))
-                                    output_file = open(output_filename, 'wb')
+                                    part_filename = output_filename + '.part'  # never truncate a pre-existing file until the upload succeeds.
+                                    output_file = open(part_filename, 'wb')
                                 idx = buffer.find(search_boundary, start)
                                 if idx != -1:
                                     output_file.write(buffer[start:idx])
                                     state = _MP_END_BOUND
                                     output_file.close()
                                     output_file = None
+                                    os.rename(part_filename, output_filename)  # move the completed upload into place.
                                     response = b'Uploaded "uploaded_%s" successfully' % filename.encode()
                                     http_status = HTTP_STATUS_CREATED
                                     start = idx + 2  # Advance past \r\n so the next line parsed is the boundary itself
                                 else:
-                                    if more_bytes and len(buffer) - start > keep_len:
-                                        leftover_bytes = buffer[-keep_len:]
-                                        output_file.write(buffer[start:-keep_len])
+                                    if more_bytes:
+                                        hold_len = min(keep_len, len(buffer) - start)  # never write bytes that might be part of the boundary.
+                                        leftover_bytes = buffer[-hold_len:]
+                                        output_file.write(buffer[start:len(buffer) - hold_len])
                                         start = len(buffer)
                                     else:
                                         output_file.write(buffer[start:])
@@ -488,7 +621,13 @@ async def api_upload_file_callback(http, verb, args, reader, writer, request_hea
                                                 state = _MP_HEADERS
                                     elif state == _MP_HEADERS:
                                         if len(line) == 0:
-                                            state = _MP_DATA
+                                            if filename is None:  # no filename="..." in Content-Disposition
+                                                response = b'filename not specified'
+                                                http_status = HTTP_STATUS_BAD_REQUEST
+                                                more_bytes = False
+                                                start = len(buffer)
+                                            else:
+                                                state = _MP_DATA
                                         elif line.startswith(b'Content-Disposition:'):
                                             pieces = line.split(b';')
                                             if len(pieces) >= 3:
@@ -510,9 +649,13 @@ async def api_upload_file_callback(http, verb, args, reader, writer, request_hea
                                     else:
                                         start = len(buffer)
                 finally:
-                    if output_file is not None:
+                    if output_file is not None:  # upload was interrupted mid-file.
                         output_file.close()
                         output_file = None
+                        try:
+                            os.remove(part_filename)  # discard the partial upload; the pre-existing file (if any) is untouched.
+                        except OSError:
+                            pass
         logging.info(f'upload response: {response}', 'http_server:api_upload_file_callback')
         bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     else:
@@ -526,14 +669,14 @@ async def api_upload_file_callback(http, verb, args, reader, writer, request_hea
 async def api_remove_file_callback(http, verb, args, reader, writer, request_headers=None):
     filename = args.get('filename')
     if valid_filename(filename) and filename not in HttpServer.DANGER_ZONE_FILE_NAMES:
-        filename = _safe_content_path(http.content_dir, filename)
+        delete_filename = _safe_content_path(http.content_dir, filename)
         try:
-            os.remove(filename)
+            os.remove(delete_filename)
             http_status = HTTP_STATUS_OK
-            response = f'removed {filename}'.encode('utf-8')
+            response = f'removed {filename}'
         except OSError as ose:
             http_status = HTTP_STATUS_CONFLICT
-            response = str(ose).encode('utf-8')
+            response = str(ose)
     else:
         http_status = HTTP_STATUS_CONFLICT
         response = b'bad file name'
@@ -546,19 +689,19 @@ async def api_rename_file_callback(http, verb, args, reader, writer, request_hea
     filename = args.get('filename')
     newname = args.get('newname')
     if valid_filename(filename) and valid_filename(newname):
-        filename = _safe_content_path(http.content_dir, filename)
-        newname = _safe_content_path(http.content_dir, newname)
-        if file_size(newname) >= 0:
+        content_filename = _safe_content_path(http.content_dir, filename)
+        content_newname = _safe_content_path(http.content_dir, newname)
+        if file_size(content_newname) >= 0:
             http_status = HTTP_STATUS_CONFLICT
-            response = f'new file {newname} already exists'.encode('utf-8')
+            response = f'new file {newname} already exists'
         else:
             try:
-                os.rename(filename, newname)
+                os.rename(content_filename, content_newname)
                 http_status = HTTP_STATUS_OK
-                response = f'renamed {filename} to {newname}'.encode('utf-8')
+                response = f'renamed {filename} to {newname}'
             except Exception as ose:
                 http_status = HTTP_STATUS_CONFLICT
-                response = str(ose).encode('utf-8')
+                response = str(ose)
     else:
         http_status = HTTP_STATUS_CONFLICT
         response = b'bad file name'
