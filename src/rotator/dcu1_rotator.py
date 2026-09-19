@@ -74,7 +74,7 @@ class Rotator:
         # wait a short bit
         await asyncio.sleep(timeout)
         bytes_received = self.serial_port.readinto(self.buffer)
-        return self.buffer[:bytes_received].decode()
+        return self.buffer[:bytes_received]
 
     async def get_rotator_bearing(self):
         count = 0
@@ -91,7 +91,7 @@ class Rotator:
             if len(result) == 0:
                 self.last_bearing = Rotator.ERROR_NO_DATA
             else:
-                if result[0] == ';':
+                if result[0] == ord(';'):
                     self.last_bearing = int(result[1:])
                 else:
                     logging.warning(f'unexpected result: "{result}"', 'dcu1_rotator:get_rotator_bearing')
@@ -120,12 +120,12 @@ class Rotator:
                 if self.primitive:
                     # Hygain DCU-3 set direction
                     # not expecting any response.
-                    message = f'AP1{bearing:03n};'.encode('utf-8')
+                    message = b'AP1%03d;' % int(bearing)
                     await self.send_and_receive(message)
                     await self.send_and_receive(b'AM1;')
                     self.last_requested_bearing = bearing
                 else:
-                    message = f'AP1{int(bearing):03n}\r'.encode('utf-8')
+                    message = b'AP1%03d\r' % int(bearing)
                     await self.send_and_receive(message)
                 result = bearing
             except Exception as ex:
