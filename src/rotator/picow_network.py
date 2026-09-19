@@ -3,7 +3,7 @@
 #
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2024, 2025, 2026  J. B. Otterson N1KDO.'
-__version__ = '0.10.11'  # 2026-09-14
+__version__ = '0.10.12'  # 2026-09-19
 
 #
 # Copyright 2024, 2025, 2026 J. B. Otterson N1KDO.
@@ -435,7 +435,10 @@ class PicowNetwork:
                 if not self._connected:
                     logging.warning('Network disconnected', 'PicowNetwork:keep_alive')
                     # send a disconnect message up from here.
-                    await self.set_message(b'not connected', -1)
+                    if self._long_messages:
+                        await self.set_message(b'not connected', -1)
+                    else:
+                        await self.set_message(b'NO NET', -1)
             await sleep(30 if self._connected else 5)  # check every 30 seconds when connected, every 5 when not.
         logging.info('keepalive exit', 'PicowNetwork.keepalive loop exit.')
 
