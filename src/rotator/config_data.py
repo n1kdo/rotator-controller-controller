@@ -47,7 +47,7 @@ class ConfigData(CachedConfigData):
     def _default_config_data():
         return {
             'SSID': 'set your SSID here',
-            'secret': 'secret',
+            'secret': DEFAULT_SECRET,
             'ap_mode': False,
             'dhcp': True,
             'ip_address': '192.168.1.73',
@@ -55,9 +55,9 @@ class ConfigData(CachedConfigData):
             'gateway': '192.168.1.1',
             'dns_server': '8.8.8.8',
             'rotor_1_name': 'rotator1',
-            'rotor_2_name': '',  # blank is permitted here.
+            'rotor_2_name': '',  # blank is permitted here and indicates no second rotor.
             'n1mm': False,
-            'tcp_port_1': '73',
-            'tcp_port_2': '-1',
-            'web_port': '80',
+            'tcp_port_1': DEFAULT_TCP_PORT_1,
+            'tcp_port_2': DEFAULT_TCP_PORT_2,
+            'web_port': DEFAULT_WEB_PORT,
         }
