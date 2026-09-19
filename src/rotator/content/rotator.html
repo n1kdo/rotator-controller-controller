@@ -275,8 +275,17 @@
             return;
         }
         xmlHttp.onreadystatechange = function () {
-            if (xmlHttp.readyState === 4 && xmlHttp.status === 200) {
-                process_get_bearing_response(xmlHttp.responseText);
+            if (xmlHttp.readyState === 4) {
+                if (xmlHttp.status === 200) {
+                    process_get_bearing_response(xmlHttp.responseText);
+                } else if (update_secs > 0) {
+                    // the request failed (device rebooting, network blip, etc).
+                    // reschedule so automatic refresh does not silently stop.
+                    if (update_timeout !== 0) {
+                        clearTimeout(update_timeout)
+                    }
+                    update_timeout = setTimeout(get_bearing, 1000);
+                }
             }
         }
         xmlHttp.open("GET", "/api/bearing?rotor=" + rotor_number, true);
@@ -365,7 +374,7 @@
             <input type="radio" name="refresh_radio" id="refresh_radio_60" value="60" onclick="set_refresh(60)"/>
             <label for="refresh_radio_60">1 minute</label><br>
         </div>
-        <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20260316</div>
+        <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20260919</div>
     </div>
 </div>
 </body>
