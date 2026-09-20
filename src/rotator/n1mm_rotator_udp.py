@@ -19,14 +19,10 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.2'  # 2026-03-17 support > 1 rotator
+__version__ = '0.9.4'  # 2026-09-20
 
-from utils import upython
 import asyncio
-if upython:
-    import micro_logging as logging
-else:
-    import logging
+import micro_logging as logging
 import socket
 from dcu1_rotator import Rotator
 
@@ -50,7 +46,7 @@ def calculate_broadcast_address(ip_address, netmask):
 
 def get_element(src, name):
     i = src.index(f'<{name}>')
-    if i > 0:
+    if i >= 0:
         start = i + 2 + len(name)
         ii = src.index('<', start)
         if ii > start:
@@ -74,22 +70,30 @@ class SendBroadcastFromN1MM:
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sockaddr = socket.getaddrinfo(target_ip, target_port)[0][-1]
         self.rotators_data = rotators_data
-        self.run = True
 
     def send(self, payload):
         self.socket.sendto(payload.encode(), self.sockaddr)
 
     async def send_datagrams(self):
-        while self.run:
-            for rotator_data in self.rotators_data:
-                bearing = await rotator_data.rotator.get_rotator_bearing()
-                message = f'{rotator_data.rotator_name} @ {bearing * 10}'
-                self.send(message)
-                await asyncio.sleep(0.050)
-            await asyncio.sleep(1.50)
-
-    def stop(self):
-        self.run = False
+        last_ok = True
+        try:
+            while True:
+                try:
+                    for rotator_data in self.rotators_data:
+                        bearing = await rotator_data.rotator.get_rotator_bearing()
+                        message = f'{rotator_data.rotator_name} @ {bearing * 10}'
+                        self.send(message)
+                        await asyncio.sleep(0.050)
+                    if not last_ok:
+                        logging.info('N1MM broadcast sending resumed.', 'n1mm_rotator_udp:send_datagrams')
+                    last_ok = True
+                except OSError as exc:
+                    if last_ok:
+                        logging.warning(f'N1MM broadcast send failed: {exc}', 'n1mm_rotator_udp:send_datagrams')
+                    last_ok = False
+                await asyncio.sleep(1.50)
+        finally:
+            self.socket.close()
 
 
 class ReceiveBroadcastsFromN1MM:
@@ -108,32 +112,38 @@ class ReceiveBroadcastsFromN1MM:
             self.receive_socket.settimeout(0.001)
         except Exception as exc:
             logging.exception('problem setting up socket', 'n1mm_udp:ReceiveBroadcastsFromN1MM:init', exc_info=exc)
+            self.receive_socket.close()
+            # run stays False so wait_for_datagram() exits immediately instead of
+            # polling a closed socket forever.
+            self.run = False
 
     async def wait_for_datagram(self):
-        while self.run:
-            try:
-                udp_data = self.receive_socket.recv(ROTOR_BROADCAST_BUF_SIZE)
-                message = udp_data.decode('utf-8')
-                logging.debug(f'message "{message}"',
-                             'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram')
-                rotor_name = get_element(message, 'rotor')
-                for rotator_data in self.rotators_data:
-                    if rotor_name == rotator_data.rotator_name:  # or rotor_name == '*':
-                        goazi = get_element(message, 'goazi')
-                        bearing = int(float(goazi))
-                        result = await rotator_data.rotator.set_rotator_bearing(bearing)
-                        if result < 0:
-                            logging.info(f'set_rotator_bearing result={result}',
-                                         'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram')
-            except OSError as exc:
-                # this is a timeout exception, no data was received, this is not abnormal.
-                pass
-            except Exception as exc:
-                logging.exception('problem receiving datagram',
-                                  'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram', exc_info=exc)
-            await asyncio.sleep(0.1)
-        while self.run:
-            pass
-
-    def stop(self):
-        self.run = False
+        try:
+            while self.run:
+                try:
+                    udp_data = self.receive_socket.recv(ROTOR_BROADCAST_BUF_SIZE)
+                    message = udp_data.decode('utf-8')
+                    logging.debug(f'message "{message}"',
+                                 'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram')
+                    rotor_name = get_element(message, 'rotor')
+                    for rotator_data in self.rotators_data:
+                        if rotor_name == rotator_data.rotator_name:  # or rotor_name == '*':
+                            goazi = get_element(message, 'goazi')
+                            bearing = int(float(goazi))
+                            if not 0 <= bearing <= 360:
+                                logging.info(f'ignoring out-of-range bearing {bearing} from N1MM',
+                                             'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram')
+                            else:
+                                result = await rotator_data.rotator.set_rotator_bearing(bearing)
+                                if result < 0:
+                                    logging.info(f'set_rotator_bearing result={result}',
+                                                 'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram')
+                except OSError as exc:
+                    # this is a timeout exception, no data was received, this is not abnormal.
+                    pass
+                except Exception as exc:
+                    logging.exception('problem receiving datagram',
+                                      'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram', exc_info=exc)
+                await asyncio.sleep(1.0)
+        finally:
+            self.receive_socket.close()

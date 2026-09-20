@@ -3,7 +3,7 @@
 #
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2024, 2025, 2026  J. B. Otterson N1KDO.'
-__version__ = '0.10.12'  # 2026-09-19
+__version__ = '0.10.13'  # 2026-09-20
 
 #
 # Copyright 2024, 2025, 2026 J. B. Otterson N1KDO.
@@ -106,7 +106,7 @@ class PicowNetwork:
             self._message = b'INIT'
         self._status = 0
         self._wlan = None
-        asyncio.create_task(self.keep_alive())
+        self._keepalive_task = asyncio.create_task(self.keep_alive())
 
     def deinit(self) -> None:
         if self._wlan is not None:
@@ -386,6 +386,18 @@ class PicowNetwork:
         else:
             logging.warning('Network not initialized.', 'PicowNetwork:status')
 
+    def _refresh_connected(self):
+        # a failed status query means we cannot confirm the link; treat it as disconnected.
+        try:
+            if self._access_point_mode:
+                self._connected = self._wlan is not None and self._wlan.active()
+            else:
+                self._connected = self._wlan is not None and \
+                                  self._wlan.status() == network.STAT_GOT_IP
+        except OSError as exc:
+            logging.exception('keepalive failed', 'PicowNetwork:keep_alive', exc)
+            self._connected = False
+
     async def keep_alive(self):
         self._keepalive = True
         last_is_connected = False
@@ -393,53 +405,40 @@ class PicowNetwork:
         await sleep(1)  # give the hardware time to settle
         while self._keepalive:
             try:
-                if self._access_point_mode:
-                    self._connected = self._wlan is not None and self._wlan.active()
-                else:
-                    self._connected = self._wlan is not None and \
-                                      self._wlan.status() == network.STAT_GOT_IP
-            except OSError as exc:
-                logging.exception('keepalive failed', 'PicowNetwork:keep_alive', exc)
-                self._connected = False
+                self._refresh_connected()
 
-            if logging.should_log(logging.DEBUG):
-                logging.debug(f'connected = {self._connected}', 'PicowNetwork.keepalive')
+                if logging.should_log(logging.DEBUG):
+                    logging.debug(f'connected = {self._connected}', 'PicowNetwork.keepalive')
 
-            if not self._connected and not self._connecting:
-                logging.warning('Not connected...  attempting network connect...', 'PicowNetwork:keep_alive')
-                self._connecting = True
-                try:
-                    await self._connect()
-                except Exception as exc:
-                    logging.exception('network connect failed', 'PicowNetwork:keep_alive', exc)
-                    self._connected = False
-                finally:
-                    self._connecting = False
-                try:
-                    if self._access_point_mode:
-                        self._connected = self._wlan is not None and self._wlan.active()
+                if not self._connected and not self._connecting:
+                    logging.warning('Not connected...  attempting network connect...', 'PicowNetwork:keep_alive')
+                    self._connecting = True
+                    try:
+                        await self._connect()
+                    except Exception as exc:
+                        logging.exception('network connect failed', 'PicowNetwork:keep_alive', exc)
+                        self._connected = False
+                    finally:
+                        self._connecting = False
+                    self._refresh_connected()
+
+                    if self._connected:
+                        logging.info('Network connected', 'PicowNetwork:keep_alive')
                     else:
-                        self._connected = self._wlan is not None and \
-                                          self._wlan.status() == network.STAT_GOT_IP
-                except OSError as exc:
-                    logging.exception('keepalive failed', 'PicowNetwork:keep_alive', exc)
-                    self._connected = False
-
-                if self._connected:
-                    logging.info('Network connected', 'PicowNetwork:keep_alive')
-                else:
-                    logging.warning('Failed to connect', 'PicowNetwork:keep_alive')
-            if last_is_connected != self._connected:
-                # detect edge when self._connected changes
-                last_is_connected = self._connected
-                if not self._connected:
-                    logging.warning('Network disconnected', 'PicowNetwork:keep_alive')
-                    # send a disconnect message up from here.
-                    if self._long_messages:
-                        await self.set_message(b'not connected', -1)
-                    else:
-                        await self.set_message(b'NO NET', -1)
-            await sleep(30 if self._connected else 5)  # check every 30 seconds when connected, every 5 when not.
+                        logging.warning('Failed to connect', 'PicowNetwork:keep_alive')
+                if last_is_connected != self._connected:
+                    # detect edge when self._connected changes
+                    last_is_connected = self._connected
+                    if not self._connected:
+                        logging.warning('Network disconnected', 'PicowNetwork:keep_alive')
+                        # send a disconnect message up from here.
+                        if self._long_messages:
+                            await self.set_message(b'not connected', -1)
+                        else:
+                            await self.set_message(b'NO NET', -1)
+                await sleep(30 if self._connected else 5)  # check every 30 seconds when connected, every 5 when not.
+            except Exception as exc:
+                 logging.exception('keep_alive loop error', 'PicowNetwork:keep_alive', exc)
         logging.info('keepalive exit', 'PicowNetwork.keepalive loop exit.')
 
     def get_message(self) -> bytes:

@@ -236,6 +236,9 @@
 
         // set the bearing readout
         document.getElementById('current_bearing').innerHTML = String(bearing);
+        if (rotor_name === "") {
+            rotor_name = "&nbsp;"
+        }
         document.getElementById('rotor_name').innerHTML = rotor_name;
 
         // automatic refresh logic
@@ -374,7 +377,7 @@
             <input type="radio" name="refresh_radio" id="refresh_radio_60" value="60" onclick="set_refresh(60)"/>
             <label for="refresh_radio_60">1 minute</label><br>
         </div>
-        <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20260919</div>
+        <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20260920</div>
     </div>
 </div>
 </body>

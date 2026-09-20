@@ -23,7 +23,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.10.0'  # 2026-09-18
+__version__ = '0.10.1'  # 2026-09-20
 
 # disable pylint import error
 # pylint: disable=E0401
@@ -66,7 +66,7 @@ class MorseCode:
         self.led = led
         self.message = b'START '
         self.keep_running = True
-        asyncio.create_task(self.morse_sender())
+        self._sender_task = asyncio.create_task(self.morse_sender())
 
     def set_message(self, new_message : bytes):
         new_message = new_message.upper().replace(b'.', b' ')
@@ -87,21 +87,25 @@ class MorseCode:
         patterns = self.MORSE_PATTERNS
 
         while self.keep_running:
-            msg = self.message
-            if not msg:
-                await sleep_ms(morse_esp)  # empty message: nothing to send; yield so we don't hog the loop
-                continue
-            logging.debug(f'starting message "{msg}"', 'morse_code:morse_sender')
-            for morse_letter in msg:
-                blink_pattern = patterns.get(morse_letter)
-                if blink_pattern is None:
-                    logging.warning(f'No pattern for letter "{morse_letter}"',
-                                    'morse_code:morse_sender')
-                    blink_pattern = patterns.get(32)  # space
-                for blink_time in blink_pattern:
-                    if blink_time > 0:
-                        led.on()
-                        await sleep_ms(blink_time)  # dit or dah
-                        led.off()
-                    await sleep_ms(morse_esp)  # dit length element space
-                await sleep_ms(morse_lsp)  # + inter-letter space
+            try:
+                msg = self.message
+                if not msg:
+                    await sleep_ms(morse_esp)  # empty message: nothing to send; yield so we don't hog the loop
+                    continue
+                logging.debug(f'starting message "{msg}"', 'morse_code:morse_sender')
+                for morse_letter in msg:
+                    blink_pattern = patterns.get(morse_letter)
+                    if blink_pattern is None:
+                        logging.warning(f'No pattern for letter "{morse_letter}"',
+                                        'morse_code:morse_sender')
+                        blink_pattern = patterns.get(32)  # space
+                    for blink_time in blink_pattern:
+                        if blink_time > 0:
+                            led.on()
+                            await sleep_ms(blink_time)  # dit or dah
+                            led.off()
+                        await sleep_ms(morse_esp)  # dit length element space
+                    await sleep_ms(morse_lsp)  # + inter-letter space
+            except Exception as exc:
+                logging.exception('morse sender error', 'morse_code:morse_sender', exc)
+                await asyncio.sleep(1)

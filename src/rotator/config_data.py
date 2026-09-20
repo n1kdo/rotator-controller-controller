@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2026 J. B. Otterson N1KDO.'
-__version__ = '0.0.1'  # 2026-09-19
+__version__ = '0.0.1'  # 2026-09-20
 
 #
 # Copyright 2026 J. B. Otterson N1KDO.
@@ -55,7 +55,9 @@ class ConfigData(CachedConfigData):
             'gateway': '192.168.1.1',
             'dns_server': '8.8.8.8',
             'rotor_1_name': 'rotator1',
+            'rotor_1_primitive': False,
             'rotor_2_name': '',  # blank is permitted here and indicates no second rotor.
+            'rotor_2_primitive': False,
             'n1mm': False,
             'tcp_port_1': DEFAULT_TCP_PORT_1,
             'tcp_port_2': DEFAULT_TCP_PORT_2,
