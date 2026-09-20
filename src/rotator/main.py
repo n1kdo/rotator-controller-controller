@@ -161,14 +161,17 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
             config['tcp_port_1'] = tcp_port_1
         else:
             errors = True
+            logging.warning(b'tcp_port_1 out of range (0-65535): %d' % tcp_port_1, 'main:api_config_callback')
         if 0 <= tcp_port_2 <= 65535:
             config['tcp_port_2'] = tcp_port_2
         else:
             errors = True
+            logging.warning(b'tcp_port_2 out of range (0-65535): %d' % tcp_port_2, 'main:api_config_callback')
         if 0 <= web_port <= 65535:
             config['web_port'] = web_port
         else:
             errors = True
+            logging.warning(b'web_port out of range (1-65535): %d' % web_port, 'main:api_config_callback')
         # a port of zero means that rotor's tcp service is disabled; it cannot collide with anything.
         effective_tcp_port_1 = tcp_port_1 if 1 <= tcp_port_1 <= 65535 else None
         effective_tcp_port_2 = tcp_port_2 if 1 <= tcp_port_2 <= 65535 else None
@@ -177,18 +180,25 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
                 (effective_tcp_port_2 is not None and
                  effective_tcp_port_2 in (effective_tcp_port_1, effective_web_port)):
             errors = True
+            logging.warning(b'port collision: tcp_port_1=%d, tcp_port_2=%d, web_port=%d' %
+                            (tcp_port_1, tcp_port_2, web_port), 'main:api_config_callback')
         ssid = args.get('SSID')
         if ssid is not None:
             if 0 < len(ssid) < 64:
                 config['SSID'] = ssid
             else:
                 errors = True
+                logging.warning(b'SSID invalid (length %d, must be 1-63): "%s"' %
+                                (len(ssid), str(ssid).encode()), 'main:api_config_callback')
         secret = args.get('secret')
-        if secret is not None:
+        if secret is not None and len(secret) != 0:
             if 8 <= len(secret) < 32:
                 config['secret'] = secret
             else:
                 errors = True
+                # do not log the secret itself, only its length.
+                logging.warning(b'secret invalid (length %d, must be 8-31)' % len(secret),
+                                'main:api_config_callback')
         config['ap_mode'] = False
         n1mm_arg = args.get('n1mm')
         if n1mm_arg is not None:
@@ -198,6 +208,14 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         if dhcp_arg is not None:
             dhcp = dhcp_arg == 1
             config['dhcp'] = dhcp
+        hostname_arg = args.get('hostname')
+        if hostname_arg is not None:
+            if 0 <= len(hostname_arg) < 16:
+                config['hostname'] = hostname_arg
+            else:
+                errors = True
+                logging.warning(b'hostname invalid (must be 0-15 chars): "%s"' %
+                                str(hostname_arg).encode(), 'main:api_config_callback')
         rotor_1_name = args.get('rotor_1_name')
         if rotor_1_name is not None:
             if isinstance(rotor_1_name, str) and 1 <= len(rotor_1_name) <= 16 and \
@@ -205,6 +223,8 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
                 config['rotor_1_name'] = rotor_1_name
             else:
                 errors = True
+                logging.warning(b'rotor_1_name invalid (must be 1-16 chars, no whitespace): "%s"' %
+                                str(rotor_1_name).encode(), 'main:api_config_callback')
         rotor_1_primitive = args.get('rotor_1_primitive')
         if rotor_1_primitive is not None:
             config['rotor_1_primitive'] = rotor_1_primitive == 1
@@ -214,6 +234,8 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
                 config['rotor_2_name'] = rotor_2_name
             else:
                 errors = True
+                logging.warning(b'rotor_2_name invalid (must be 0-16 chars): "%s"' %
+                                str(rotor_2_name).encode(), 'main:api_config_callback')
         rotor_2_primitive = args.get('rotor_2_primitive')
         if rotor_2_primitive is not None:
             config['rotor_2_primitive'] = rotor_2_primitive == 1
@@ -223,24 +245,32 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
                 config['ip_address'] = ip_address
             else:
                 errors = True
+                logging.warning(b'ip_address invalid: "%s"' % str(ip_address).encode(),
+                                'main:api_config_callback')
         netmask = args.get('netmask')
         if netmask is not None:
             if is_ipv4(netmask):
                 config['netmask'] = netmask
             else:
                 errors = True
+                logging.warning(b'netmask invalid: "%s"' % str(netmask).encode(),
+                                'main:api_config_callback')
         gateway = args.get('gateway')
         if gateway is not None:
             if is_ipv4(gateway):
                 config['gateway'] = gateway
             else:
                 errors = True
+                logging.warning(b'gateway invalid: "%s"' % str(gateway).encode(),
+                                'main:api_config_callback')
         dns_server = args.get('dns_server')
         if dns_server is not None:
             if is_ipv4(dns_server):
                 config['dns_server'] = dns_server
             else:
                 errors = True
+                logging.warning(b'dns_server invalid: "%s"' % str(dns_server).encode(),
+                                'main:api_config_callback')
         if not errors:
             response = b'ok\r\n'
             http_status = HTTP_STATUS_OK

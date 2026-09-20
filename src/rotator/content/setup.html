@@ -30,6 +30,10 @@
         width: 500px;
     }
 
+    .bottom_buttons {
+        margin-top: 4px;
+    }
+
     .centered {
         text-align: center;
     }
@@ -52,7 +56,6 @@
         text-align: center;
         font-size: 24pt;
         font-weight: bold;
-        margin-top: 4px;
     }
 
     input {
@@ -154,6 +157,7 @@
         document.getElementById("n1mm_input").checked = config.n1mm;
         let dhcp = config.dhcp
         document.getElementById("dhcp_input").checked = config.dhcp;
+        document.getElementById("hostname_input").value = config.hostname;
         let ip_address_element = document.getElementById("ip_address_input");
         ip_address_element.value = config.ip_address;
         ip_address_element.disabled = dhcp;
@@ -180,6 +184,7 @@
         let web_port = document.getElementById("web_port_input").value
         let dhcp = document.getElementById("dhcp_input").checked;
         let dhcp_val = dhcp ? 1 : 0;
+        let hostname = document.getElementById("hostname_input").value;
         let n1mm = document.getElementById("n1mm_input").checked;
         let n1mm_val = n1mm ? 1 : 0;
         let rotor_1_name = document.getElementById("rotor_1_name_input").value;
@@ -219,11 +224,17 @@
             return;
         }
         if ((rotor_1_name.length < 1) || (rotor_1_name.length > 16) || (/\s/.test(rotor_1_name))) {
-            alert("Invalid Rotor 1 Name")
+            alert("Invalid Rotor 1 Name");
+            return;
         }
         // an empty name for rotor #2 is allowed, it indicates no rotor 2 is present
         if (rotor_2_name.length > 16) {  // empty is permitted here, no rotor
-            alert("Invalid Rotor 2 Name")
+            alert("Invalid Rotor 2 Name");
+            return;
+        }
+        if ((hostname.length < 1) || (hostname.length > 64) || (/\s/.test(hostname))) {
+            alert("Invalid hostname");
+            return;
         }
         // should validate static IP parameters here
         if (!dhcp) {
@@ -253,6 +264,7 @@
         config.web_port = web_port;
         config.n1mm = n1mm_val;
         config.dhcp = dhcp_val;
+        config.hostname = hostname;
         config.rotor_1_name = rotor_1_name;
         config.rotor_1_primitive = rotor_1_primitive;
         config.rotor_2_name = rotor_2_name;
@@ -302,7 +314,7 @@
     }
 
     function cancel_page() {
-        window.location.href = "/";
+        window.location.href = "/rotator.html";
     }
 
     function dhcp_change() {
@@ -356,6 +368,10 @@
             <label for="dhcp_input">Use DHCP:</label>
             <input type="checkbox" id="dhcp_input" onchange="dhcp_change()">
         </p>
+            <p>
+                <label for="hostname_input">Hostname:</label>
+                <input type="text" id="hostname_input" maxlength="64">
+            </p>
         <p>
             <label for="ip_address_input">IP Address:</label>
             <input type="text" id="ip_address_input" maxlength="16"
@@ -378,7 +394,7 @@
         </p>
     </form>
     <div class="centered">
-        <p>
+        <p class="bottom_buttons">
             <input type="button" id="cancel_button" value="Cancel" title="Back to Rotator Control"
                    onclick="cancel_page()"/>
             <input type="button" id="reset_button" value="Reset" title="Reload Configuration"
