@@ -382,13 +382,13 @@ async def main():
                     logging.info(f'Starting web service on port {web_port}', 'main:main')
                     web_server = await asyncio.start_server(http_server.serve_http_client, '0.0.0.0', web_port)
                     if tcp_port_1 > 0:
-                        logging.info(f'Starting tcp service on port {tcp_port_1}', 'main:main')
+                        logging.info(f'Starting rotator 1 tcp service on port {tcp_port_1}', 'main:main')
                         tcp1_server = await asyncio.start_server(RotatorTelnetServer(rotator_1).serve_serial_client,
                                                                  '0.0.0.0', tcp_port_1)
                     else:
                         logging.info('rotor 1 tcp service disabled (port 0)', 'main:main')
                     if tcp_port_2 > 0:
-                        logging.info(f'Starting tcp service on port {tcp_port_2}', 'main:main')
+                        logging.info(f'Starting rotator 2 tcp service on port {tcp_port_2}', 'main:main')
                         tcp2_server = await asyncio.start_server(RotatorTelnetServer(rotator_2).serve_serial_client,
                                                                  '0.0.0.0', tcp_port_2)
                     else:
