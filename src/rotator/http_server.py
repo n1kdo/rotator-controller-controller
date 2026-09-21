@@ -220,22 +220,23 @@ class HttpServer:
 
     async def start_response(self, writer, http_status:int=HTTP_STATUS_OK, content_type:bytes=b'', response_size:int=0, extra_headers:list[bytes]=None):
         status_text = self.HTTP_STATUS_TEXT.get(http_status) or b'Confused'
-        writer.write(b'HTTP/1.0 %d %s\r\n' % (http_status, status_text))
-        writer.write(b'Access-Control-Allow-Origin: *\r\n')  # CORS override
+        parts = [b'HTTP/1.0 %d %s\r\n' % (http_status, status_text),
+                 b'Access-Control-Allow-Origin: *\r\n']  # CORS override
         if content_type is not None and len(content_type) > 0:
-            writer.write(b'Content-type: ')
-            writer.write(content_type)
+            parts.append(b'Content-type: ')
+            parts.append(content_type)
             if content_type in (HttpServer.CT_TEXT_TEXT, HttpServer.CT_TEXT_HTML, HttpServer.CT_APP_JSON):
-                writer.write(b'; charset=UTF-8\r\n')
+                parts.append(b'; charset=UTF-8\r\n')
             else:
-                writer.write(b'\r\n')
+                parts.append(b'\r\n')
         if response_size >= 0:
-            writer.write(b'Content-length: %d\r\n' % response_size)
+            parts.append(b'Content-length: %d\r\n' % response_size)
         if extra_headers is not None:
             for header in extra_headers:
-                writer.write(header)
-                writer.write(b'\r\n')
-        writer.write(b'\r\n')
+                parts.append(header)
+                parts.append(b'\r\n')
+        parts.append(b'\r\n')
+        writer.write(b''.join(parts))
         await writer.drain()
 
     async def send_simple_response(self, writer, http_status=HTTP_STATUS_OK, content_type=b'', response=None, extra_headers=None):
