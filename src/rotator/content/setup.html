@@ -34,6 +34,21 @@
         margin-top: 4px;
     }
 
+    .bottom_links {
+        font-size: 8pt;
+        font-weight: bold;
+        color: black;
+        text-align: left;
+        position: absolute;
+        top: 340px;
+    }
+
+    .bottom_links a:link, .bottom_links a:visited, .bottom_links a:hover {
+        color: blue;
+        text-decoration: none;
+        padding-right: 4px;
+    }
+
     .centered {
         text-align: center;
     }
@@ -102,21 +117,6 @@
 
     .rotor_name {
         display: table-cell;
-    }
-
-    .bottom_links {
-        font-size: 8pt;
-        font-weight: bold;
-        color: black;
-        text-align: left;
-        position: absolute;
-        top: 340px;
-    }
-
-    .bottom_links a:link, .bottom_links a:visited, .bottom_links a:hover {
-        color: blue;
-        text-decoration: none;
-        padding-right: 4px;
     }
 
 </style>
@@ -280,8 +280,12 @@
             return;
         }
         xmlHttp.onreadystatechange = function () {
-            if (xmlHttp.readyState === 4 && xmlHttp.status === 200) {
-                process_set_config_response(xmlHttp.responseText);
+            if (xmlHttp.readyState === 4) {
+                if (xmlHttp.status === 200) {
+                    process_set_config_response(xmlHttp.responseText);
+                } else if (xmlHttp.status === 400) {
+                    process_set_config_error(xmlHttp.responseText);
+                }
             }
         }
         xmlHttp.open("POST", "/api/config", true);
@@ -291,6 +295,12 @@
 
     function process_set_config_response(message) {
         //alert(message);
+    }
+
+    function process_set_config_error(message) {
+        // the 400 body is "parameter(s) out of range\r\n <field, field, ...>"
+        let fields = message.substring(message.indexOf("\n") + 1).trim();
+        alert("Invalid parameter(s):\n" + (fields !== "" ? fields : message));
     }
 
     function restart() {
@@ -409,8 +419,8 @@
     <a href="/rotator.html?rotor=1">Rotor 1</a>
     <a href="/rotator.html?rotor=2">Rotor 2</a>
     <a href="/setup.html" style="color:red">Setup</a>
-    <a href="files.html">Files</a>
+    <a href="/files.html">Files</a>
 </div>
-<div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20260920</div>
+<div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20260921</div>
 </body>
 </html>
