@@ -25,7 +25,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.2'  # 2026-09-20
+__version__ = '0.9.3'  # 2026-09-21
 
 # disable pylint import error
 # pylint: disable=E0401
@@ -33,6 +33,7 @@ __version__ = '0.9.2'  # 2026-09-20
 from serialport import SerialPort
 import asyncio
 import micro_logging as logging
+from utils import elapsed_ms, milliseconds
 
 
 class Rotator:
@@ -71,10 +72,18 @@ class Rotator:
         # send the message
         self.serial_port.write(message)
         self.serial_port.flush()
-        # wait a short bit
-        await asyncio.sleep(timeout)
-        bytes_received = self.serial_port.readinto(self.buffer)
-        return self.buffer[:bytes_received]
+        received = bytearray()
+        t0 = milliseconds()
+        while True:
+            count = self.serial_port.readinto(self.buffer)
+            if count > 0:
+                received.extend(self.buffer[:count])
+                if received[0] == ord(';') and len(received) >= 4:
+                    break  # complete bearing frame.
+            if elapsed_ms(t0) >= int(timeout * 1000):
+                break
+            await asyncio.sleep(0.005)
+        return received
 
     async def get_rotator_bearing(self):
         count = 0
@@ -91,7 +100,7 @@ class Rotator:
             if len(result) == 0:
                 self.last_bearing = Rotator.ERROR_NO_DATA
             else:
-                if result[0] == ord(';'):
+                if result[0] == ord(';') and len(result) >= 4:
                     self.last_bearing = int(result[1:])
                 else:
                     logging.warning(f'unexpected result: "{result}"', 'dcu1_rotator:get_rotator_bearing')

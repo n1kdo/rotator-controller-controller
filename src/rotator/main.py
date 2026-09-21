@@ -23,7 +23,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.2.2'  # 2026-09-20
+__version__ = '0.2.2'  # 2026-09-21
 
 import asyncio
 import gc
@@ -395,9 +395,15 @@ async def main():
                         logging.info('rotor 2 tcp service disabled (port 0)', 'main:main')
                     n1mm_mode = config.get('n1mm')
                     if n1mm_mode and not ap_mode:
-                        rotator_1_data = RotatorData(rotator_1, config.get_bytes('rotor_1_name'))
-                        rotator_2_data = RotatorData(rotator_2, config.get_bytes('rotor_2_name'))
-                        rotators_data = [rotator_1_data, rotator_2_data]
+                        rotators_data = []
+                        rotor_1_name = config.get_bytes('rotor_1_name')
+                        if rotor_1_name:
+                            data = RotatorData(rotator_1, rotor_1_name)
+                            rotators_data.append(data)
+                        rotor_2_name = config.get_bytes('rotor_2_name')
+                        if rotor_2_name:
+                            data = RotatorData(rotator_2, rotor_2_name)
+                            rotators_data.append(data)
                         logging.info(f'configuring N1MM Mode with ip address {ip_address} net mask {netmask}',
                                      'main:main')
                         broadcast_address = calculate_broadcast_address(ip_address, netmask)
