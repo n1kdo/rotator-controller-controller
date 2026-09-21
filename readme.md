@@ -82,4 +82,4 @@ KPA500-remote *host* for the Elecraft KPA-500 amplifier.
 
 See [Using the Rotator Controller-Controller with N1MM+](N1MM.md)
 
-n1kdo 2025-06-25
+n1kdo 2026-09-21
