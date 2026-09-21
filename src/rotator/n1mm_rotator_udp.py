@@ -44,35 +44,35 @@ def calculate_broadcast_address(ip_address, netmask):
     return bcast_addr
 
 
-def get_element(src, name):
-    i = src.index(f'<{name}>')
+def get_element(src:bytes, name:bytes) -> bytes|None:
+    i = src.index(b'<' + name + b'>')
     if i >= 0:
         start = i + 2 + len(name)
-        ii = src.index('<', start)
+        ii = src.index(b'<', start)
         if ii > start:
             return src[start:ii]
     return None
 
 
 class RotatorData:
-    def __init__(self, rotator:Rotator=None, rotator_name:str=None):
+    def __init__(self, rotator:Rotator, rotator_name:bytes):
         self.rotator = rotator
         self.rotator_name = rotator_name
 
 
-class SendBroadcastFromN1MM:
+class SendBroadcastsToN1MM:
     """
     class to send UDP datagrams to N1MM
     """
 
-    def __init__(self, target_ip, target_port, rotators_data:list=None):
+    def __init__(self, target_ip, target_port, rotators_data:list):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sockaddr = socket.getaddrinfo(target_ip, target_port)[0][-1]
         self.rotators_data = rotators_data
 
-    def send(self, payload):
-        self.socket.sendto(payload.encode(), self.sockaddr)
+    def send(self, payload:bytes):
+        self.socket.sendto(payload, self.sockaddr)
 
     async def send_datagrams(self):
         last_ok = True
@@ -81,15 +81,15 @@ class SendBroadcastFromN1MM:
                 try:
                     for rotator_data in self.rotators_data:
                         bearing = await rotator_data.rotator.get_rotator_bearing()
-                        message = f'{rotator_data.rotator_name} @ {bearing * 10}'
-                        self.send(message)
+                        payload = b'%s @ %d' % (rotator_data.rotator_name, bearing * 10)
+                        self.send(payload)
                         await asyncio.sleep(0.050)
                     if not last_ok:
                         logging.info('N1MM broadcast sending resumed.', 'n1mm_rotator_udp:send_datagrams')
                     last_ok = True
                 except OSError as exc:
                     if last_ok:
-                        logging.warning(f'N1MM broadcast send failed: {exc}', 'n1mm_rotator_udp:send_datagrams')
+                        logging.exception('N1MM broadcast send failed', 'n1mm_rotator_udp:send_datagrams', exc)
                     last_ok = False
                 await asyncio.sleep(1.50)
         finally:
@@ -101,7 +101,7 @@ class ReceiveBroadcastsFromN1MM:
     class that receives rotator control datagrams from N1MM
     """
 
-    def __init__(self, receive_ip, receive_port, rotators_data:list=None):
+    def __init__(self, receive_ip, receive_port, rotators_data:list):
         self.receive_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.receive_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.rotators_data = rotators_data
@@ -121,22 +121,21 @@ class ReceiveBroadcastsFromN1MM:
         try:
             while self.run:
                 try:
-                    udp_data = self.receive_socket.recv(ROTOR_BROADCAST_BUF_SIZE)
-                    message = udp_data.decode('utf-8')
-                    logging.debug(f'message "{message}"',
-                                 'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram')
-                    rotor_name = get_element(message, 'rotor')
+                    message = self.receive_socket.recv(ROTOR_BROADCAST_BUF_SIZE)
+                    logging.debug(b'message "%s"' % message,
+                                  'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram')
+                    rotor_name = get_element(message, b'rotor')
                     for rotator_data in self.rotators_data:
                         if rotor_name == rotator_data.rotator_name:  # or rotor_name == '*':
-                            goazi = get_element(message, 'goazi')
+                            goazi = get_element(message, b'goazi')
                             bearing = int(float(goazi))
                             if not 0 <= bearing <= 360:
-                                logging.info(f'ignoring out-of-range bearing {bearing} from N1MM',
+                                logging.info(b'ignoring out-of-range bearing %d from N1MM' % bearing,
                                              'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram')
                             else:
                                 result = await rotator_data.rotator.set_rotator_bearing(bearing)
                                 if result < 0:
-                                    logging.info(f'set_rotator_bearing result={result}',
+                                    logging.info(b'set_rotator_bearing result=%d' % result,
                                                  'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram')
                 except OSError as exc:
                     # this is a timeout exception, no data was received, this is not abnormal.
@@ -144,6 +143,6 @@ class ReceiveBroadcastsFromN1MM:
                 except Exception as exc:
                     logging.exception('problem receiving datagram',
                                       'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram', exc_info=exc)
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(0.5)
         finally:
             self.receive_socket.close()
