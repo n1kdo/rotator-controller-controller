@@ -34,7 +34,7 @@ from http_server import (HttpServer,
                          HTTP_STATUS_OK, HTTP_STATUS_BAD_REQUEST, HTTP_STATUS_MOVED_PERMANENTLY,
                          HTTP_STATUS_INTERNAL_SERVER_ERROR, HTTP_VERB_GET, HTTP_VERB_POST)
 from morse_code import MorseCode
-from n1mm_rotator_udp import RotatorData, calculate_broadcast_address, ReceiveBroadcastsFromN1MM, SendBroadcastFromN1MM
+from n1mm_rotator_udp import RotatorData, calculate_broadcast_address, ReceiveBroadcastsFromN1MM, SendBroadcastsToN1MM
 from dcu1_rotator import Rotator
 from utils import elapsed_ms, is_ipv4, milliseconds, safe_int, upython
 
@@ -109,19 +109,19 @@ class RotatorTelnetServer:
                             if len(buffer) < 8:  # anti-gibberish test
                                 buffer.append(b)
                                 if b == ord(';') or b == 13:  # command terminator
-                                    command = ''.join(map(chr, buffer))
-                                    if command in ('AI1;', 'AI1\r'):  # get direction
+                                    command = bytes(buffer)
+                                    buffer = []  # discard the completed command
+                                    if command in (b'AI1;', b'AI1\r'):  # get direction
                                         bearing = await self._rotator.get_rotator_bearing()
                                         writer.write(b';%03d' % bearing)
                                         await writer.drain()
-                                    elif command.startswith('AP1') and command[
-                                        -1] == '\r':  # set bearing and move rotator
+                                    elif command.startswith(b'AP1') and command[-1] == 13:  # set + move
                                         requested = safe_int(command[3:-1], -1)
                                         if 0 <= requested <= 360:
                                             await self._rotator.set_rotator_bearing(requested)
-                                    elif command.startswith('AP1') and command[-1] == ';':  # set bearing
+                                    elif command.startswith(b'AP1') and command[-1] == ord(';'):  # set bearing
                                         requested = safe_int(command[3:-1], -1)
-                                    elif command == 'AM1;' and 0 <= requested <= 360:  # move rotator
+                                    elif command == b'AM1;' and 0 <= requested <= 360:  # move rotator
                                         await self._rotator.set_rotator_bearing(requested)
         except Exception as exc:
             logging.exception('exception in serve_serial_client:', 'RotatorTelnetServer:serve_serial_client', exc_info=exc)
@@ -140,7 +140,7 @@ class RotatorTelnetServer:
 @http_server.route(b'/')
 async def slash_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/'
     http_status = HTTP_STATUS_MOVED_PERMANENTLY
-    bytes_sent = await http.send_simple_response(writer, http_status, None, None, ['Location: /rotator.html'])
+    bytes_sent = await http.send_simple_response(writer, http_status, None, None, [b'Location: /rotator.html'])
     return bytes_sent, http_status
 
 
@@ -153,52 +153,43 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         http_status = HTTP_STATUS_OK
         bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, payload)
     elif verb == HTTP_VERB_POST:
-        errors = False
+        errors = []
         tcp_port_1 = safe_int(args.get('tcp_port_1'), -2)
         tcp_port_2 = safe_int(args.get('tcp_port_2'), -2)
         web_port = safe_int(args.get('web_port'), -2)
         if 0 <= tcp_port_1 <= 65535:
             config['tcp_port_1'] = tcp_port_1
         else:
-            errors = True
-            logging.warning(b'tcp_port_1 out of range (0-65535): %d' % tcp_port_1, 'main:api_config_callback')
+            errors.append(b'tcp_port_1')
         if 0 <= tcp_port_2 <= 65535:
             config['tcp_port_2'] = tcp_port_2
         else:
-            errors = True
-            logging.warning(b'tcp_port_2 out of range (0-65535): %d' % tcp_port_2, 'main:api_config_callback')
+            errors.append(b'tcp_port_2')
         if 0 <= web_port <= 65535:
             config['web_port'] = web_port
         else:
-            errors = True
-            logging.warning(b'web_port out of range (1-65535): %d' % web_port, 'main:api_config_callback')
+            errors.append(b'web_port')
         # a port of zero means that rotor's tcp service is disabled; it cannot collide with anything.
         effective_tcp_port_1 = tcp_port_1 if 1 <= tcp_port_1 <= 65535 else None
         effective_tcp_port_2 = tcp_port_2 if 1 <= tcp_port_2 <= 65535 else None
         effective_web_port = web_port if 1 <= web_port <= 65535 else DEFAULT_WEB_PORT
-        if (effective_tcp_port_1 is not None and effective_tcp_port_1 == effective_web_port) or \
-                (effective_tcp_port_2 is not None and
-                 effective_tcp_port_2 in (effective_tcp_port_1, effective_web_port)):
-            errors = True
-            logging.warning(b'port collision: tcp_port_1=%d, tcp_port_2=%d, web_port=%d' %
-                            (tcp_port_1, tcp_port_2, web_port), 'main:api_config_callback')
+        if effective_tcp_port_1 is not None and effective_tcp_port_1 == effective_web_port:
+            errors.append(b'tcp_port_1 (collides with web_port)')
+        if effective_tcp_port_2 is not None and \
+                effective_tcp_port_2 in (effective_tcp_port_1, effective_web_port):
+            errors.append(b'tcp_port_2 (collides with tcp_port_1 or web_port)')
         ssid = args.get('SSID')
         if ssid is not None:
             if 0 < len(ssid) < 64:
                 config['SSID'] = ssid
             else:
-                errors = True
-                logging.warning(b'SSID invalid (length %d, must be 1-63): "%s"' %
-                                (len(ssid), str(ssid).encode()), 'main:api_config_callback')
+                errors.append(b'SSID')
         secret = args.get('secret')
         if secret is not None and len(secret) != 0:
             if 8 <= len(secret) < 32:
                 config['secret'] = secret
             else:
-                errors = True
-                # do not log the secret itself, only its length.
-                logging.warning(b'secret invalid (length %d, must be 8-31)' % len(secret),
-                                'main:api_config_callback')
+                errors.append(b'secret')
         config['ap_mode'] = False
         n1mm_arg = args.get('n1mm')
         if n1mm_arg is not None:
@@ -213,18 +204,14 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
             if 0 <= len(hostname_arg) < 16:
                 config['hostname'] = hostname_arg
             else:
-                errors = True
-                logging.warning(b'hostname invalid (must be 0-15 chars): "%s"' %
-                                str(hostname_arg).encode(), 'main:api_config_callback')
+                errors.append(b'hostname')
         rotor_1_name = args.get('rotor_1_name')
         if rotor_1_name is not None:
             if isinstance(rotor_1_name, str) and 1 <= len(rotor_1_name) <= 16 and \
                     not any(ch in ' \t\r\n\f' for ch in rotor_1_name):
                 config['rotor_1_name'] = rotor_1_name
             else:
-                errors = True
-                logging.warning(b'rotor_1_name invalid (must be 1-16 chars, no whitespace): "%s"' %
-                                str(rotor_1_name).encode(), 'main:api_config_callback')
+                errors.append(b'rotor_1_name')
         rotor_1_primitive = args.get('rotor_1_primitive')
         if rotor_1_primitive is not None:
             config['rotor_1_primitive'] = rotor_1_primitive == 1
@@ -233,9 +220,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
             if isinstance(rotor_2_name, str) and len(rotor_2_name) <= 16:
                 config['rotor_2_name'] = rotor_2_name
             else:
-                errors = True
-                logging.warning(b'rotor_2_name invalid (must be 0-16 chars): "%s"' %
-                                str(rotor_2_name).encode(), 'main:api_config_callback')
+                errors.append(b'rotor_2_name')
         rotor_2_primitive = args.get('rotor_2_primitive')
         if rotor_2_primitive is not None:
             config['rotor_2_primitive'] = rotor_2_primitive == 1
@@ -244,39 +229,31 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
             if is_ipv4(ip_address):
                 config['ip_address'] = ip_address
             else:
-                errors = True
-                logging.warning(b'ip_address invalid: "%s"' % str(ip_address).encode(),
-                                'main:api_config_callback')
+                errors.append(b'ip_address')
         netmask = args.get('netmask')
         if netmask is not None:
             if is_ipv4(netmask):
                 config['netmask'] = netmask
             else:
-                errors = True
-                logging.warning(b'netmask invalid: "%s"' % str(netmask).encode(),
-                                'main:api_config_callback')
+                errors.append(b'netmask')
         gateway = args.get('gateway')
         if gateway is not None:
             if is_ipv4(gateway):
                 config['gateway'] = gateway
             else:
-                errors = True
-                logging.warning(b'gateway invalid: "%s"' % str(gateway).encode(),
-                                'main:api_config_callback')
+                errors.append(b'gateway')
         dns_server = args.get('dns_server')
         if dns_server is not None:
             if is_ipv4(dns_server):
                 config['dns_server'] = dns_server
             else:
-                errors = True
-                logging.warning(b'dns_server invalid: "%s"' % str(dns_server).encode(),
-                                'main:api_config_callback')
+                errors.append(b'dns_server')
         if not errors:
             response = b'ok\r\n'
             http_status = HTTP_STATUS_OK
             bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
         else:
-            response = b'parameter out of range\r\n'
+            response = b'parameter(s) out of range\r\n' + b', '.join(errors) + b'\r\n'
             http_status = HTTP_STATUS_BAD_REQUEST
             bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     else:
@@ -310,10 +287,10 @@ async def api_bearing_callback(http, verb, args, reader, writer, request_headers
     rotor_number = args.get('rotor', '1')
     if rotor_number == '1':
         rotator = rotator_1
-        rotor_name = config.get('rotor_1_name')
+        rotor_name = config.get_bytes('rotor_1_name')
     elif rotor_number == '2':
         rotator = rotator_2
-        rotor_name = config.get('rotor_2_name')
+        rotor_name = config.get_bytes('rotor_2_name')
     else:
         response = b'parameter out of range\r\n'
         http_status = HTTP_STATUS_BAD_REQUEST
@@ -326,7 +303,7 @@ async def api_bearing_callback(http, verb, args, reader, writer, request_headers
             if 0 <= requested_bearing <= 360:
                 bearing = await rotator.set_rotator_bearing(requested_bearing)
                 http_status = HTTP_STATUS_OK
-                response = b'{\r\n  "bearing": %d,\r\n  "rotor": "%s"\r\n}\r\n' % (bearing, rotor_name.encode())
+                response = b'{\r\n  "bearing": %d,\r\n  "rotor": "%s"\r\n}\r\n' % (bearing, rotor_name)
                 bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
             else:
                 http_status = HTTP_STATUS_BAD_REQUEST
@@ -339,7 +316,7 @@ async def api_bearing_callback(http, verb, args, reader, writer, request_headers
     else:
         bearing = await rotator.get_rotator_bearing()
         http_status = HTTP_STATUS_OK
-        response = b'{\r\n  "bearing": %d,\r\n  "rotor": "%s"\r\n}\r\n' % (bearing, rotor_name.encode())
+        response = b'{\r\n  "bearing": %d,\r\n  "rotor": "%s"\r\n}\r\n' % (bearing, rotor_name)
         bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     return bytes_sent, http_status
 
@@ -418,8 +395,8 @@ async def main():
                         logging.info('rotor 2 tcp service disabled (port 0)', 'main:main')
                     n1mm_mode = config.get('n1mm')
                     if n1mm_mode and not ap_mode:
-                        rotator_1_data = RotatorData(rotator_1, config.get('rotor_1_name'))
-                        rotator_2_data = RotatorData(rotator_2, config.get('rotor_2_name'))
+                        rotator_1_data = RotatorData(rotator_1, config.get_bytes('rotor_1_name'))
+                        rotator_2_data = RotatorData(rotator_2, config.get_bytes('rotor_2_name'))
                         rotators_data = [rotator_1_data, rotator_2_data]
                         logging.info(f'configuring N1MM Mode with ip address {ip_address} net mask {netmask}',
                                      'main:main')
@@ -427,9 +404,9 @@ async def main():
                         logging.info(f'Broadcast address (to N1MM) is {broadcast_address}', 'main:main')
                         logging.info(f'Starting rotor position broadcasts for N1MM on port {N1MM_BROADCAST_FROM_ROTOR_PORT}',
                                      'main:main')
-                        send_broadcast_from_n1mm = SendBroadcastFromN1MM(broadcast_address,
-                                                                         target_port=N1MM_BROADCAST_FROM_ROTOR_PORT,
-                                                                         rotators_data=rotators_data)
+                        send_broadcast_from_n1mm = SendBroadcastsToN1MM(broadcast_address,
+                                                                        target_port=N1MM_BROADCAST_FROM_ROTOR_PORT,
+                                                                        rotators_data=rotators_data)
                         logging.info(f'Starting listener for UDP position broadcasts from N1MM on port {N1MM_ROTOR_BROADCAST_PORT}',
                                      'main:main')
                         receive_broadcast_from_n1mm = ReceiveBroadcastsFromN1MM(ip_address,
