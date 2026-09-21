@@ -106,6 +106,7 @@ class PicowNetwork:
             self._message = b'INIT'
         self._status = 0
         self._wlan = None
+        self._keepalive = True
         self._keepalive_task = asyncio.create_task(self.keep_alive())
 
     def deinit(self) -> None:
@@ -113,6 +114,9 @@ class PicowNetwork:
             self._wlan.active(False)
             #self._wlan.deinit()   # is this needed?
         self._keepalive = False
+        if self._keepalive_task is not None:
+            self._keepalive_task.cancel()
+            self._keepalive_task = None
 
     def get_ip_address(self):
         return self._ip_address
@@ -399,7 +403,6 @@ class PicowNetwork:
             self._connected = False
 
     async def keep_alive(self):
-        self._keepalive = True
         last_is_connected = False
         sleep = asyncio.sleep
         await sleep(1)  # give the hardware time to settle
