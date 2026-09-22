@@ -22,7 +22,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.8'  # 2026-09-18
+__version__ = '0.9.9'  # 2026-09-22
 
 import sys
 import time
@@ -42,7 +42,6 @@ else:
         @staticmethod
         def viper(f):
             return f
-
 
     micropython = _MP()
 
@@ -165,10 +164,12 @@ class LineReader:
                 if idx + 1 > self._max_line_length:  # the line itself is too long.
                     self._pending = b''
                     raise ValueError('line too long')
-                line = pending[:idx + 1]
-                self._pending = pending[idx + 1:]
+                line = pending[: idx + 1]
+                self._pending = pending[idx + 1 :]
                 return line
-            if len(pending) >= self._max_line_length:  # no newline in max_line_length bytes.
+            if (
+                len(pending) >= self._max_line_length
+            ):  # no newline in max_line_length bytes.
                 self._pending = b''
                 raise ValueError('line too long')
             # Persist before the await so cancellation cannot lose data.
@@ -220,8 +221,8 @@ def num_bits_set(n: int) -> int:
         # negative: count the bits of the 32-bit two's complement representation.
         # bit 31 is always set; bits 0-30 are n & 0x7fffffff.
         set_bits = 1
-        nn &= 0x7fffffff
+        nn &= 0x7FFFFFFF
     while nn:
-        set_bits += BITS[nn & 0x0f]
+        set_bits += BITS[nn & 0x0F]
         nn >>= 4
     return set_bits

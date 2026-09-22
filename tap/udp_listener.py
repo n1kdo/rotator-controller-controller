@@ -20,7 +20,9 @@ class RotorBroadcaster:
     """
 
     def __init__(self, target_ip, target_port=N1MM_OTHER_BROADCAST_PORT):
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+        self.socket = socket.socket(
+            socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP
+        )
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
@@ -48,11 +50,13 @@ def main():
     try:
         receive_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
-            #receive_socket.bind(('', N1MM_BROADCAST_PORT))
-            #receive_socket.bind(('127.0.0.1', N1MM_BROADCAST_PORT))
-            sockaddr = socket.getaddrinfo('192.168.1.102', N1MM_ROTOR_BROADCAST_PORT)[0][-1]
+            # receive_socket.bind(('', N1MM_BROADCAST_PORT))
+            # receive_socket.bind(('127.0.0.1', N1MM_BROADCAST_PORT))
+            sockaddr = socket.getaddrinfo('192.168.1.102', N1MM_ROTOR_BROADCAST_PORT)[
+                0
+            ][-1]
             receive_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            #receive_socket.setblocking(0)
+            # receive_socket.setblocking(0)
             receive_socket.bind(sockaddr)
             receive_socket.settimeout(0.001)
             global run
@@ -66,7 +70,7 @@ def main():
                     goazi = get_element(message, 'goazi')
                     print(f'goazi={goazi}')
 
-                    #print(hexdump_buffer(udp_data))
+                    # print(hexdump_buffer(udp_data))
 
                 # """<N1MMRotor><rotor>*</rotor><goazi>66.0</goazi><offset>0.0</offset><bidirectional>0</bidirectional><freqband>28.0</freqband></N1MMRotor>"""
 
@@ -80,7 +84,7 @@ def main():
                     print(exc, type(exc))
                 time.sleep(0.1)
                 # send rotor position to n1mm
-                if counter < 0: # 9:
+                if counter < 0:  # 9:
                     counter += 1
                 else:
                     counter = 0
@@ -88,7 +92,6 @@ def main():
                     bcast_message = f'{my_name} @ {degrees*10}'
                     # print(bcast_message)
                     rotor_broadcaster.send(bcast_message)
-
 
         finally:
             if receive_socket is not None:
@@ -99,4 +102,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

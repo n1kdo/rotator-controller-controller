@@ -23,7 +23,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.0.2'  # 2026-05-29
+__version__ = '0.0.3'  # 2026-09-22
 
 import micro_logging as logging
 
@@ -45,7 +45,7 @@ class Machine(object):
         logging.warning('Machine.soft_reset()', 'main:Machine:soft_reset()')
 
     @staticmethod
-    def freq(f:int=None) -> int:
+    def freq(f: int = None) -> int:
         return 0 if f is None else f
 
     @staticmethod
@@ -81,5 +81,3 @@ class Machine(object):
 
 
 machine = Machine()
-
-

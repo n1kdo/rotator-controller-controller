@@ -24,7 +24,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.2'  # 2026-04-27
+__version__ = '0.9.3'  # 2026-09-22
 
 # disable pylint import error
 # pylint: disable=E0401
@@ -45,12 +45,14 @@ class SerialPort:
             if name == '':
                 name = 'com1:'
             try:
-                self.port = serial.Serial(port=name,
-                                          baudrate=baudrate,
-                                          parity=serial.PARITY_NONE,
-                                          bytesize=serial.EIGHTBITS,
-                                          stopbits=serial.STOPBITS_ONE,
-                                          timeout=timeout)
+                self.port = serial.Serial(
+                    port=name,
+                    baudrate=baudrate,
+                    parity=serial.PARITY_NONE,
+                    bytesize=serial.EIGHTBITS,
+                    stopbits=serial.STOPBITS_ONE,
+                    timeout=timeout,
+                )
             except Exception as e:
                 print(f'cannot open {name}, error: {e}')
                 raise
@@ -76,7 +78,7 @@ class SerialPort:
                 'parity': None,
                 'stop': 1,
                 'timeout': timeout_msec,
-                'timeout_char': timeout_char_msec
+                'timeout_char': timeout_char_msec,
             }
             if tx_pin is not None and rx_pin is not None:
                 kwargs['tx'] = tx_pin
@@ -107,7 +109,9 @@ class SerialPort:
 
     def read(self, size=16):
         buffer = self.port.read(size)
-        return b'' if buffer is None else buffer  # micropython machine.UART returns None on timeout.
+        return (
+            b'' if buffer is None else buffer
+        )  # micropython machine.UART returns None on timeout.
 
     def readinto(self, buf):
         result = self.port.readinto(buf)

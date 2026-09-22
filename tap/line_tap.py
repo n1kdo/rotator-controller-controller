@@ -24,7 +24,7 @@ def hexdump_buffer(buffer):
         printable += chr(b) if 32 <= b <= 126 else '.'
         offset += 1
         if len(hex_bytes) >= 48:
-            result += ofs + '  ' + hex_bytes + '  ' + printable +'\n'
+            result += ofs + '  ' + hex_bytes + '  ' + printable + '\n'
             hex_bytes = ''
             printable = ''
             ofs = '{:04x}'.format(offset)
@@ -43,18 +43,22 @@ def dump_buffer(name, buffer, dump_all=False):
 def main():
     verbosity = 5
     try:
-        tx_port = serial.Serial(port='com3:',
-                                baudrate=BAUD_RATE,
-                                parity=serial.PARITY_NONE,
-                                bytesize=serial.EIGHTBITS,
-                                stopbits=serial.STOPBITS_ONE,
-                                timeout=0)
-        rx_port = serial.Serial(port='com4:',
-                                baudrate=BAUD_RATE,
-                                parity=serial.PARITY_NONE,
-                                bytesize=serial.EIGHTBITS,
-                                stopbits=serial.STOPBITS_ONE,
-                                timeout=0)
+        tx_port = serial.Serial(
+            port='com3:',
+            baudrate=BAUD_RATE,
+            parity=serial.PARITY_NONE,
+            bytesize=serial.EIGHTBITS,
+            stopbits=serial.STOPBITS_ONE,
+            timeout=0,
+        )
+        rx_port = serial.Serial(
+            port='com4:',
+            baudrate=BAUD_RATE,
+            parity=serial.PARITY_NONE,
+            bytesize=serial.EIGHTBITS,
+            stopbits=serial.STOPBITS_ONE,
+            timeout=0,
+        )
 
         tx_buffer = bytearray()
         rx_buffer = bytearray()
@@ -78,9 +82,11 @@ def main():
 
 
 if __name__ == '__main__':
-    logging.basicConfig(format='%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s',
-                        datefmt='%Y-%m-%d %H:%M:{}',
-                        level=logging.INFO,
-                        stream=sys.stdout)
+    logging.basicConfig(
+        format='%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s',
+        datefmt='%Y-%m-%d %H:%M:{}',
+        level=logging.INFO,
+        stream=sys.stdout,
+    )
     logging.Formatter.converter = time.gmtime
     main()

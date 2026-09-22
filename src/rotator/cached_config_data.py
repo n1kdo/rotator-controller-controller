@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2026 J. B. Otterson N1KDO.'
-__version__ = '0.0.6'  # 2026-09-18
+__version__ = '0.0.7'  # 2026-09-22
 
 #
 # Copyright 2026 J. B. Otterson N1KDO.
@@ -33,6 +33,7 @@ import asyncio
 import micro_logging as logging
 import os
 from utils import upython
+
 if upython:
     import json
 else:
@@ -60,11 +61,15 @@ class CachedConfigData:
             with open(self._config_file_name, 'r') as config_file:
                 self._config_data = json.load(config_file)
                 if logging.should_log(logging.DEBUG):
-                    logging.debug(f'read configuration from {self._config_file_name}',
-                                  'cached_config_data:_read_config_data()')
+                    logging.debug(
+                        f'read configuration from {self._config_file_name}',
+                        'cached_config_data:_read_config_data()',
+                    )
         except Exception as ex:
-            logging.info(f'failed to load configuration from {self._config_file_name},:  {type(ex)}, {ex}',
-                         'cached_config_data:_read_config_data()')
+            logging.info(
+                f'failed to load configuration from {self._config_file_name},:  {type(ex)}, {ex}',
+                'cached_config_data:_read_config_data()',
+            )
             self._config_data = self._default_config_data()
         finally:
             self._dirty = False
@@ -74,18 +79,24 @@ class CachedConfigData:
         tmp_file = self._config_file_name + '.tmp'
         try:
             try:
-                os.remove(tmp_file)  # clear any orphan from a previously interrupted write
+                os.remove(
+                    tmp_file
+                )  # clear any orphan from a previously interrupted write
             except OSError:
                 pass
             with open(tmp_file, 'w') as config_file:
                 json.dump(self._config_data, config_file)
             os.rename(tmp_file, self._config_file_name)
-            logging.info(f'wrote configuration to {self._config_file_name}',
-                         'cached_config_data:_write_config_data()')
+            logging.info(
+                f'wrote configuration to {self._config_file_name}',
+                'cached_config_data:_write_config_data()',
+            )
         except Exception as ex:
-            logging.exception(f'failed to write configuration data to {self._config_file_name}',
-                              'cached_config_data:_write_config_data()',
-                              ex)
+            logging.exception(
+                f'failed to write configuration data to {self._config_file_name}',
+                'cached_config_data:_write_config_data()',
+                ex,
+            )
             try:
                 os.remove(tmp_file)  # don't leave a partial tmp behind
             except OSError:
@@ -121,8 +132,10 @@ class CachedConfigData:
                 datab = datab.encode()
                 self._config_data_bytes[key] = datab
             else:
-                logging.error(f'tried to get bytes value for "{key}" but "{datab}" is not a string',
-                              'cached_config_data:getb')
+                logging.error(
+                    f'tried to get bytes value for "{key}" but "{datab}" is not a string',
+                    'cached_config_data:getb',
+                )
                 return None
         return datab
 
@@ -134,7 +147,9 @@ class CachedConfigData:
             self._dirty = True
             self._deferred_write_timeout = DEFAULT_WRITE_DELAY
             if self._deferred_writer_task is None:
-                self._deferred_writer_task = asyncio.create_task(self._deferred_writer())
+                self._deferred_writer_task = asyncio.create_task(
+                    self._deferred_writer()
+                )
 
     def put_bytes(self, key, valuebytes):
         value = valuebytes.decode()

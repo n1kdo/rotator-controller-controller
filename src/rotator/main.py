@@ -30,11 +30,22 @@ import gc
 import socket
 import micro_logging as logging
 
-from http_server import (HttpServer,
-                         HTTP_STATUS_OK, HTTP_STATUS_BAD_REQUEST, HTTP_STATUS_MOVED_PERMANENTLY,
-                         HTTP_STATUS_INTERNAL_SERVER_ERROR, HTTP_VERB_GET, HTTP_VERB_POST)
+from http_server import (
+    HttpServer,
+    HTTP_STATUS_OK,
+    HTTP_STATUS_BAD_REQUEST,
+    HTTP_STATUS_MOVED_PERMANENTLY,
+    HTTP_STATUS_INTERNAL_SERVER_ERROR,
+    HTTP_VERB_GET,
+    HTTP_VERB_POST,
+)
 from morse_code import MorseCode
-from n1mm_rotator_udp import RotatorData, calculate_broadcast_address, ReceiveBroadcastsFromN1MM, SendBroadcastsToN1MM
+from n1mm_rotator_udp import (
+    RotatorData,
+    calculate_broadcast_address,
+    ReceiveBroadcastsFromN1MM,
+    SendBroadcastsToN1MM,
+)
 from dcu1_rotator import Rotator
 from utils import elapsed_ms, is_ipv4, milliseconds, safe_int, upython
 
@@ -57,9 +68,14 @@ CONTENT_DIR = 'content/'
 N1MM_ROTOR_BROADCAST_PORT = 12040
 N1MM_BROADCAST_FROM_ROTOR_PORT = 13010
 
-from config_data import (ConfigData,
-                         DEFAULT_SSID, DEFAULT_SECRET, DEFAULT_WEB_PORT,
-                         DEFAULT_TCP_PORT_1, DEFAULT_TCP_PORT_2)
+from config_data import (
+    ConfigData,
+    DEFAULT_SSID,
+    DEFAULT_SECRET,
+    DEFAULT_WEB_PORT,
+    DEFAULT_TCP_PORT_1,
+    DEFAULT_TCP_PORT_2,
+)
 
 # globals
 keep_running = True
@@ -74,6 +90,7 @@ config = ConfigData()
 
 # http server
 http_server = HttpServer(content_dir=CONTENT_DIR)
+
 
 class RotatorTelnetServer:
     def __init__(self, rotator):
@@ -92,7 +109,9 @@ class RotatorTelnetServer:
         requested = -1
         t0 = milliseconds()
         partner = writer.get_extra_info('peername')[0]
-        logging.info(b'serial client connected from %s' % partner, 'main:connect_to_network')
+        logging.info(
+            b'serial client connected from %s' % partner, 'main:connect_to_network'
+        )
         buffer = []
 
         try:
@@ -103,7 +122,9 @@ class RotatorTelnetServer:
                 else:
                     if len(data) == 1:
                         b = data[0]
-                        if b == ord('A'):  # commands always start with A, so reset the buffer.
+                        if b == ord(
+                            'A'
+                        ):  # commands always start with A, so reset the buffer.
                             buffer = [b]
                         else:
                             if len(buffer) < 8:  # anti-gibberish test
@@ -112,46 +133,79 @@ class RotatorTelnetServer:
                                     command = bytes(buffer)
                                     buffer = []  # discard the completed command
                                     if command in (b'AI1;', b'AI1\r'):  # get direction
-                                        bearing = await self._rotator.get_rotator_bearing()
+                                        bearing = (
+                                            await self._rotator.get_rotator_bearing()
+                                        )
                                         writer.write(b';%03d' % bearing)
                                         await writer.drain()
-                                    elif command.startswith(b'AP1') and command[-1] == 13:  # set + move
+                                    elif (
+                                        command.startswith(b'AP1') and command[-1] == 13
+                                    ):  # set + move
                                         requested = safe_int(command[3:-1], -1)
                                         if 0 <= requested <= 360:
-                                            await self._rotator.set_rotator_bearing(requested)
-                                    elif command.startswith(b'AP1') and command[-1] == ord(';'):  # set bearing
+                                            await self._rotator.set_rotator_bearing(
+                                                requested
+                                            )
+                                    elif command.startswith(b'AP1') and command[
+                                        -1
+                                    ] == ord(
+                                        ';'
+                                    ):  # set bearing
                                         requested = safe_int(command[3:-1], -1)
-                                    elif command == b'AM1;' and 0 <= requested <= 360:  # move rotator
-                                        await self._rotator.set_rotator_bearing(requested)
+                                    elif (
+                                        command == b'AM1;' and 0 <= requested <= 360
+                                    ):  # move rotator
+                                        await self._rotator.set_rotator_bearing(
+                                            requested
+                                        )
         except Exception as exc:
-            logging.exception('exception in serve_serial_client:', 'RotatorTelnetServer:serve_serial_client', exc_info=exc)
+            logging.exception(
+                'exception in serve_serial_client:',
+                'RotatorTelnetServer:serve_serial_client',
+                exc_info=exc,
+            )
         finally:
             try:
                 writer.close()
                 await writer.wait_closed()
             except Exception as exc:
-                logging.exception('exception closing serial client:', 'RotatorTelnetServer:serve_serial_client', exc_info=exc)
+                logging.exception(
+                    'exception closing serial client:',
+                    'RotatorTelnetServer:serve_serial_client',
+                    exc_info=exc,
+                )
             gc.collect()
-        logging.info(b'serial client disconnected, elapsed time %6.3f seconds' % (elapsed_ms(t0) / 1000.0),
-                     'RotatorTelnetServer:serve_serial_client')
+        logging.info(
+            b'serial client disconnected, elapsed time %6.3f seconds'
+            % (elapsed_ms(t0) / 1000.0),
+            'RotatorTelnetServer:serve_serial_client',
+        )
 
 
 # noinspection PyUnusedLocal
 @http_server.route(b'/')
-async def slash_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/'
+async def slash_callback(
+    http, verb, args, reader, writer, request_headers=None
+):  # callback for '/'
     http_status = HTTP_STATUS_MOVED_PERMANENTLY
-    bytes_sent = await http.send_simple_response(writer, http_status, None, None, [b'Location: /rotator.html'])
+    bytes_sent = await http.send_simple_response(
+        writer, http_status, None, None, [b'Location: /rotator.html']
+    )
     return bytes_sent, http_status
 
 
 # noinspection PyUnusedLocal
 @http_server.route(b'/api/config')
-async def api_config_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/api/config'
+async def api_config_callback(
+    http, verb, args, reader, writer, request_headers=None
+):  # callback for '/api/config'
     if verb == HTTP_VERB_GET:
         payload = config.get_data().copy()
         payload.pop('secret')  # do not return the secret in the api response.
         http_status = HTTP_STATUS_OK
-        bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, payload)
+        bytes_sent = await http.send_simple_response(
+            writer, http_status, http.CT_APP_JSON, payload
+        )
     elif verb == HTTP_VERB_POST:
         errors = []
         tcp_port_1 = safe_int(args.get('tcp_port_1'), -2)
@@ -173,10 +227,15 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         effective_tcp_port_1 = tcp_port_1 if 1 <= tcp_port_1 <= 65535 else None
         effective_tcp_port_2 = tcp_port_2 if 1 <= tcp_port_2 <= 65535 else None
         effective_web_port = web_port if 1 <= web_port <= 65535 else DEFAULT_WEB_PORT
-        if effective_tcp_port_1 is not None and effective_tcp_port_1 == effective_web_port:
+        if (
+            effective_tcp_port_1 is not None
+            and effective_tcp_port_1 == effective_web_port
+        ):
             errors.append(b'tcp_port_1 (collides with web_port)')
-        if effective_tcp_port_2 is not None and \
-                effective_tcp_port_2 in (effective_tcp_port_1, effective_web_port):
+        if effective_tcp_port_2 is not None and effective_tcp_port_2 in (
+            effective_tcp_port_1,
+            effective_web_port,
+        ):
             errors.append(b'tcp_port_2 (collides with tcp_port_1 or web_port)')
         ssid = args.get('SSID')
         if ssid is not None:
@@ -207,8 +266,11 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
                 errors.append(b'hostname')
         rotor_1_name = args.get('rotor_1_name')
         if rotor_1_name is not None:
-            if isinstance(rotor_1_name, str) and 1 <= len(rotor_1_name) <= 16 and \
-                    not any(ch in ' \t\r\n\f' for ch in rotor_1_name):
+            if (
+                isinstance(rotor_1_name, str)
+                and 1 <= len(rotor_1_name) <= 16
+                and not any(ch in ' \t\r\n\f' for ch in rotor_1_name)
+            ):
                 config['rotor_1_name'] = rotor_1_name
             else:
                 errors.append(b'rotor_1_name')
@@ -251,15 +313,21 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         if not errors:
             response = b'ok\r\n'
             http_status = HTTP_STATUS_OK
-            bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+            bytes_sent = await http.send_simple_response(
+                writer, http_status, http.CT_TEXT_TEXT, response
+            )
         else:
             response = b'parameter(s) out of range\r\n' + b', '.join(errors) + b'\r\n'
             http_status = HTTP_STATUS_BAD_REQUEST
-            bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+            bytes_sent = await http.send_simple_response(
+                writer, http_status, http.CT_TEXT_TEXT, response
+            )
     else:
         response = b'GET or PUT only.'
         http_status = HTTP_STATUS_BAD_REQUEST
-        bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+        bytes_sent = await http.send_simple_response(
+            writer, http_status, http.CT_TEXT_TEXT, response
+        )
     return bytes_sent, http_status
 
 
@@ -271,11 +339,15 @@ async def api_restart_callback(http, verb, args, reader, writer, request_headers
         keep_running = False
         response = b'ok\r\n'
         http_status = HTTP_STATUS_OK
-        bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+        bytes_sent = await http.send_simple_response(
+            writer, http_status, http.CT_TEXT_TEXT, response
+        )
     else:
         http_status = HTTP_STATUS_BAD_REQUEST
         response = b'not permitted except on PICO-W'
-        bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
+        bytes_sent = await http.send_simple_response(
+            writer, http_status, http.CT_APP_JSON, response
+        )
     return bytes_sent, http_status
 
 
@@ -294,7 +366,9 @@ async def api_bearing_callback(http, verb, args, reader, writer, request_headers
     else:
         response = b'parameter out of range\r\n'
         http_status = HTTP_STATUS_BAD_REQUEST
-        bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+        bytes_sent = await http.send_simple_response(
+            writer, http_status, http.CT_TEXT_TEXT, response
+        )
         return bytes_sent, http_status
 
     if requested_bearing is not None and requested_bearing != '':
@@ -303,21 +377,35 @@ async def api_bearing_callback(http, verb, args, reader, writer, request_headers
             if 0 <= requested_bearing <= 360:
                 bearing = await rotator.set_rotator_bearing(requested_bearing)
                 http_status = HTTP_STATUS_OK
-                response = b'{\r\n  "bearing": %d,\r\n  "rotor": "%s"\r\n}\r\n' % (bearing, rotor_name)
-                bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
+                response = b'{\r\n  "bearing": %d,\r\n  "rotor": "%s"\r\n}\r\n' % (
+                    bearing,
+                    rotor_name,
+                )
+                bytes_sent = await http.send_simple_response(
+                    writer, http_status, http.CT_APP_JSON, response
+                )
             else:
                 http_status = HTTP_STATUS_BAD_REQUEST
                 response = b'parameter out of range\r\n'
-                bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+                bytes_sent = await http.send_simple_response(
+                    writer, http_status, http.CT_TEXT_TEXT, response
+                )
         except Exception as ex:
             http_status = HTTP_STATUS_INTERNAL_SERVER_ERROR
             response = b'uh oh: %s' % str(ex).encode()
-            bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+            bytes_sent = await http.send_simple_response(
+                writer, http_status, http.CT_TEXT_TEXT, response
+            )
     else:
         bearing = await rotator.get_rotator_bearing()
         http_status = HTTP_STATUS_OK
-        response = b'{\r\n  "bearing": %d,\r\n  "rotor": "%s"\r\n}\r\n' % (bearing, rotor_name)
-        bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
+        response = b'{\r\n  "bearing": %d,\r\n  "rotor": "%s"\r\n}\r\n' % (
+            bearing,
+            rotor_name,
+        )
+        bytes_sent = await http.send_simple_response(
+            writer, http_status, http.CT_APP_JSON, response
+        )
     return bytes_sent, http_status
 
 
@@ -339,10 +427,14 @@ async def main():
         morse_code_sender = None
 
     # a port of zero means the rotor's tcp service is disabled; missing/invalid values fall back to defaults.
-    tcp_port_1 = safe_int(config.get('tcp_port_1', DEFAULT_TCP_PORT_1), DEFAULT_TCP_PORT_1)
+    tcp_port_1 = safe_int(
+        config.get('tcp_port_1', DEFAULT_TCP_PORT_1), DEFAULT_TCP_PORT_1
+    )
     if not 0 <= tcp_port_1 <= 65535:
         tcp_port_1 = DEFAULT_TCP_PORT_1
-    tcp_port_2 = safe_int(config.get('tcp_port_2', DEFAULT_TCP_PORT_2), DEFAULT_TCP_PORT_2)
+    tcp_port_2 = safe_int(
+        config.get('tcp_port_2', DEFAULT_TCP_PORT_2), DEFAULT_TCP_PORT_2
+    )
     if not 0 <= tcp_port_2 <= 65535:
         tcp_port_2 = DEFAULT_TCP_PORT_2
     web_port = safe_int(config.get('web_port') or DEFAULT_WEB_PORT, DEFAULT_WEB_PORT)
@@ -369,30 +461,55 @@ async def main():
             else:
                 connected = True
 
-            if connected and not last_connected: # just connected.
+            if connected and not last_connected:  # just connected.
                 try:
                     if picow_network is not None:
                         ip_address = picow_network.get_ip_address()
                         netmask = picow_network.get_netmask()
                     else:
-                        ip_address = socket.gethostbyname_ex(socket.gethostname())[2][-1]
+                        ip_address = socket.gethostbyname_ex(socket.gethostname())[2][
+                            -1
+                        ]
                         netmask = '255.255.255.0'
-                    logging.info(b'ip_address %s, netmask %s' % (ip_address, netmask), 'main:main')
+                    logging.info(
+                        b'ip_address %s, netmask %s' % (ip_address, netmask),
+                        'main:main',
+                    )
 
-                    logging.info(b'Starting web service on port %d' % web_port, 'main:main')
-                    web_server = await asyncio.start_server(http_server.serve_http_client, '0.0.0.0', web_port)
+                    logging.info(
+                        b'Starting web service on port %d' % web_port, 'main:main'
+                    )
+                    web_server = await asyncio.start_server(
+                        http_server.serve_http_client, '0.0.0.0', web_port
+                    )
                     if tcp_port_1 > 0:
-                        logging.info(b'Starting rotator 1 tcp service on port %d' % tcp_port_1, 'main:main')
-                        tcp1_server = await asyncio.start_server(RotatorTelnetServer(rotator_1).serve_serial_client,
-                                                                 '0.0.0.0', tcp_port_1)
+                        logging.info(
+                            b'Starting rotator 1 tcp service on port %d' % tcp_port_1,
+                            'main:main',
+                        )
+                        tcp1_server = await asyncio.start_server(
+                            RotatorTelnetServer(rotator_1).serve_serial_client,
+                            '0.0.0.0',
+                            tcp_port_1,
+                        )
                     else:
-                        logging.info('rotor 1 tcp service disabled (port 0)', 'main:main')
+                        logging.info(
+                            'rotor 1 tcp service disabled (port 0)', 'main:main'
+                        )
                     if tcp_port_2 > 0:
-                        logging.info(b'Starting rotator 2 tcp service on port %d' % tcp_port_2, 'main:main')
-                        tcp2_server = await asyncio.start_server(RotatorTelnetServer(rotator_2).serve_serial_client,
-                                                                 '0.0.0.0', tcp_port_2)
+                        logging.info(
+                            b'Starting rotator 2 tcp service on port %d' % tcp_port_2,
+                            'main:main',
+                        )
+                        tcp2_server = await asyncio.start_server(
+                            RotatorTelnetServer(rotator_2).serve_serial_client,
+                            '0.0.0.0',
+                            tcp_port_2,
+                        )
                     else:
-                        logging.info('rotor 2 tcp service disabled (port 0)', 'main:main')
+                        logging.info(
+                            'rotor 2 tcp service disabled (port 0)', 'main:main'
+                        )
                     n1mm_mode = config.get('n1mm')
                     if n1mm_mode and not ap_mode:
                         rotators_data = []
@@ -404,26 +521,48 @@ async def main():
                         if rotor_2_name:
                             data = RotatorData(rotator_2, rotor_2_name)
                             rotators_data.append(data)
-                        logging.info(b'configuring N1MM Mode with ip address %s net mask %s' % (ip_address, netmask),
-                                     'main:main')
-                        broadcast_address = calculate_broadcast_address(ip_address, netmask)
-                        logging.info(b'Broadcast address (to N1MM) is %s' % broadcast_address, 'main:main')
-                        logging.info(b'Starting rotor position broadcasts for N1MM on port %d' % N1MM_BROADCAST_FROM_ROTOR_PORT,
-                                     'main:main')
-                        send_broadcast_from_n1mm = SendBroadcastsToN1MM(broadcast_address,
-                                                                        target_port=N1MM_BROADCAST_FROM_ROTOR_PORT,
-                                                                        rotators_data=rotators_data)
-                        logging.info(b'Starting listener for UDP position broadcasts from N1MM on port %d' % N1MM_ROTOR_BROADCAST_PORT,
-                                     'main:main')
-                        receive_broadcast_from_n1mm = ReceiveBroadcastsFromN1MM(ip_address,
-                                                                                receive_port=N1MM_ROTOR_BROADCAST_PORT,
-                                                                                rotators_data=rotators_data)
-                        n1mm_sender = asyncio.create_task(send_broadcast_from_n1mm.send_datagrams())
-                        n1mm_receiver = asyncio.create_task(receive_broadcast_from_n1mm.wait_for_datagram())
+                        logging.info(
+                            b'configuring N1MM Mode with ip address %s net mask %s'
+                            % (ip_address, netmask),
+                            'main:main',
+                        )
+                        broadcast_address = calculate_broadcast_address(
+                            ip_address, netmask
+                        )
+                        logging.info(
+                            b'Broadcast address (to N1MM) is %s' % broadcast_address,
+                            'main:main',
+                        )
+                        logging.info(
+                            b'Starting rotor position broadcasts for N1MM on port %d'
+                            % N1MM_BROADCAST_FROM_ROTOR_PORT,
+                            'main:main',
+                        )
+                        send_broadcast_from_n1mm = SendBroadcastsToN1MM(
+                            broadcast_address,
+                            target_port=N1MM_BROADCAST_FROM_ROTOR_PORT,
+                            rotators_data=rotators_data,
+                        )
+                        logging.info(
+                            b'Starting listener for UDP position broadcasts from N1MM on port %d'
+                            % N1MM_ROTOR_BROADCAST_PORT,
+                            'main:main',
+                        )
+                        receive_broadcast_from_n1mm = ReceiveBroadcastsFromN1MM(
+                            ip_address,
+                            receive_port=N1MM_ROTOR_BROADCAST_PORT,
+                            rotators_data=rotators_data,
+                        )
+                        n1mm_sender = asyncio.create_task(
+                            send_broadcast_from_n1mm.send_datagrams()
+                        )
+                        n1mm_receiver = asyncio.create_task(
+                            receive_broadcast_from_n1mm.wait_for_datagram()
+                        )
                 except Exception as ex:
                     logging.exception('failed to start services', 'main:main', ex)
 
-            elif not connected and last_connected: # just disconnected
+            elif not connected and last_connected:  # just disconnected
                 logging.info('network lost, stopping services', 'main:main')
                 for server in (web_server, tcp1_server, tcp2_server):
                     if server is not None:
@@ -436,7 +575,10 @@ async def main():
                     n1mm_receiver.cancel()
                     n1mm_receiver = None
 
-            if picow_network is not None and picow_network.get_message() != last_message:
+            if (
+                picow_network is not None
+                and picow_network.get_message() != last_message
+            ):
                 last_message = picow_network.get_message()
                 morse_code_sender.set_message(last_message)
 
@@ -447,7 +589,10 @@ async def main():
         if logging.should_log(logging.DEBUG) and upython:
             free = gc.mem_free()
             alloc = gc.mem_alloc()
-            logging.debug(b'Memory: %d allocated, %d free (%6.2f %% free)' % (alloc, free, free / (free + alloc) * 100))
+            logging.debug(
+                b'Memory: %d allocated, %d free (%6.2f %% free)'
+                % (alloc, free, free / (free + alloc) * 100)
+            )
 
     if upython:
         if config is not None:

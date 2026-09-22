@@ -20,7 +20,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.10.9'  # 2026-09-04
+__version__ = '0.10.12'  # 2026-09-22
 
 """
 Note: to edit linux forced device names, edit
@@ -45,10 +45,12 @@ _BUFFER_SIZE = 2048
 
 _WATCHDOG_PY = 'watchdog.py'
 
+
 class BytesConcatenator:
     """
     this is used to collect data from pyboard functions that otherwise do not return data.
     """
+
     __slots__ = ('data',)
 
     def __init__(self):
@@ -93,7 +95,9 @@ def put_file(filename, target, source_directory='.', src_file_name=None):
             return False
         try:
             print(f'sending file {src_file_name} to {filename}')
-            target.fs_put(src_file_name, filename, progress_callback=put_file_progress_callback)
+            target.fs_put(
+                src_file_name, filename, progress_callback=put_file_progress_callback
+            )
             print()
         except (OSError, SerialException) as exc:
             # a transient USB/serial glitch surfaces here; the local file is fine.
@@ -130,7 +134,7 @@ def loader_ls(target, src='/'):
 for f in uos.ilistdir('{src}'):
     print('{{}}{{}}'.format(f[0], '/' if f[1] & 0x4000 else ''))
 """
-    #print(cmd)
+    # print(cmd)
     target.exec_(cmd, data_consumer=files_data.write_bytes)
     files = str(files_data).split('\n')
     for phile in files:
@@ -147,6 +151,7 @@ def loader_reset(target):
     time.sleep(2)
     target.serial.write(b"\x04")  # control-D -- restart
     time.sleep(2)
+
 
 def loader_sha1(target, file=''):
     hash_data = BytesConcatenator()
@@ -175,10 +180,13 @@ def local_sha1(file):
     return bytes.hex(hasher.digest())
 
 
-def load_device(port, force=False,
-                manifest_filename='loader_manifest.json',
-                no_watchdog=False,
-                bootloader=False):
+def load_device(
+    port,
+    force=False,
+    manifest_filename='loader_manifest.json',
+    no_watchdog=False,
+    bootloader=False,
+):
     try:
         with open(manifest_filename, 'r') as manifest_file:
             manifest = json.load(manifest_file)
@@ -233,7 +241,9 @@ def load_device(port, force=False,
         print('starting boot loader')
         loader_bootloader(target)
         target.close()
-        print('Either upload firmware file (uf2) or power cycle device to exit bootloader mode.')
+        print(
+            'Either upload firmware file (uf2) or power cycle device to exit bootloader mode.'
+        )
         return
 
     # clean up files that do not belong here.
@@ -248,7 +258,7 @@ def load_device(port, force=False,
                     safe_to_delete = False
                     break
         if not safe_to_delete:
-            continue #  do not (try to) delete any directory containing special files
+            continue  #  do not (try to) delete any directory containing special files
         if force or existing_file not in files_list:
             if existing_file[-1] == '/':
                 print(f'removing directory {existing_file[:-1]}')
@@ -281,7 +291,12 @@ def load_device(port, force=False,
     # if it is not present, it will use the contents of $file.example
     for file in special_files_list:
         if file not in existing_files:
-            put_file(file, target, source_directory=source_directory, src_file_name=f'{file}.example')
+            put_file(
+                file,
+                target,
+                source_directory=source_directory,
+                src_file_name=f'{file}.example',
+            )
     target.exit_raw_repl()
     # done updating file system, restart the device and show the output
     print('Device should restart.')
@@ -291,7 +306,9 @@ def load_device(port, force=False,
             b = target.serial.read(1)
             sys.stdout.write(b.decode())
     except SerialException:
-        print('Error: Serial Exception, did the port go away?  Did you unplug the USB cable?')
+        print(
+            'Error: Serial Exception, did the port go away?  Did you unplug the USB cable?'
+        )
     except KeyboardInterrupt:
         print('Keyboard Interrupt, bye bye.')
     except Exception as e:
@@ -303,22 +320,25 @@ def load_device(port, force=False,
 
 def main():
     parser = argparse.ArgumentParser(
-        prog='Loader',
-        description='Load an application to a micropython device')
-    parser.add_argument('--bootloader',
-                        action='store_true',
-                        help='restart device in boot loader mode')
-    parser.add_argument('--force',
-                        action='store_true',
-                        help='force all files to be replaced')
-    parser.add_argument('--no-watchdog',
-                        action='store_true',
-                        help='do not load watchdog.py.')
-    parser.add_argument('--port',
-                        help='name of serial port, otherwise it will be detected.')
-    parser.add_argument('--manifest-filename',
-                        help='name of manifest file',
-                        default='loader_manifest.json')
+        prog='Loader', description='Load an application to a micropython device'
+    )
+    parser.add_argument(
+        '--bootloader', action='store_true', help='restart device in boot loader mode'
+    )
+    parser.add_argument(
+        '--force', action='store_true', help='force all files to be replaced'
+    )
+    parser.add_argument(
+        '--no-watchdog', action='store_true', help='do not load watchdog.py.'
+    )
+    parser.add_argument(
+        '--port', help='name of serial port, otherwise it will be detected.'
+    )
+    parser.add_argument(
+        '--manifest-filename',
+        help='name of manifest file',
+        default='loader_manifest.json',
+    )
     args = parser.parse_args()
     bootloader = args.bootloader
     force = args.force
@@ -347,11 +367,13 @@ def main():
         sys.exit(1)
 
     print(f'Loading device on {picow_port}...')
-    load_device(picow_port,
-                force,
-                manifest_filename=args.manifest_filename,
-                no_watchdog=no_watchdog,
-                bootloader=bootloader)
+    load_device(
+        picow_port,
+        force,
+        manifest_filename=args.manifest_filename,
+        no_watchdog=no_watchdog,
+        bootloader=bootloader,
+    )
 
 
 if __name__ == "__main__":

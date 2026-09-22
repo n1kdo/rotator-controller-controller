@@ -50,11 +50,13 @@ class Rotator:
         :param primitive: set this true if rotor control is not Rotor-EZ or Green Heron
         """
         self.serial_port_locked = True
-        self.primitive = primitive # set True to use two-command mode for NOT Rotor-EZ or Green Heron
+        self.primitive = primitive  # set True to use two-command mode for NOT Rotor-EZ or Green Heron
         self.buffer = bytearray(16)
         self.last_bearing = Rotator.ERROR_UNKNOWN
         self.last_requested_bearing = Rotator.ERROR_UNKNOWN
-        self.serial_port = SerialPort(name=portName, baudrate=Rotator.BAUD_RATE, timeout=0)
+        self.serial_port = SerialPort(
+            name=portName, baudrate=Rotator.BAUD_RATE, timeout=0
+        )
         self.initialized = False
         self.serial_port_locked = False
 
@@ -103,10 +105,17 @@ class Rotator:
                 if result[0] == ord(';') and len(result) >= 4:
                     self.last_bearing = int(result[1:])
                 else:
-                    logging.warning(f'unexpected result: "{result}"', 'dcu1_rotator:get_rotator_bearing')
+                    logging.warning(
+                        f'unexpected result: "{result}"',
+                        'dcu1_rotator:get_rotator_bearing',
+                    )
                     self.last_bearing = Rotator.ERROR_BAD_DATA
         except Exception as ex:
-            logging.exception(f'exception in get_rotator_bearing', 'dcu1_rotator:get_rotator_bearing', exc_info=ex)
+            logging.exception(
+                f'exception in get_rotator_bearing',
+                'dcu1_rotator:get_rotator_bearing',
+                exc_info=ex,
+            )
             self.last_bearing = Rotator.ERROR_ASYNC
         finally:
             self.serial_port_locked = False
@@ -114,11 +123,13 @@ class Rotator:
 
     async def set_rotator_bearing(self, bearing):
         if self.serial_port_locked:
-            logging.warning('busy, waiting for serial port lock', 'dcu1_rotator:set_rotator_bearing')
+            logging.warning(
+                'busy, waiting for serial port lock', 'dcu1_rotator:set_rotator_bearing'
+            )
         locked_count = 0
         while self.serial_port_locked and locked_count < 10:
             locked_count += 1
-            await asyncio.sleep(.050)
+            await asyncio.sleep(0.050)
         if self.serial_port_locked:
             result = Rotator.ERROR_BUSY
         else:
@@ -139,7 +150,11 @@ class Rotator:
                     await self.send_and_receive(message)
                 result = bearing
             except Exception as ex:
-                logging.exception('failure to send message to rotator', 'dcu1_rotator:set_rotator_bearing', exc_info=ex)
+                logging.exception(
+                    'failure to send message to rotator',
+                    'dcu1_rotator:set_rotator_bearing',
+                    exc_info=ex,
+                )
                 result = Rotator.ERROR_ASYNC
             finally:
                 self.serial_port_locked = False

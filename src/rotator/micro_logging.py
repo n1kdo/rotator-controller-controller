@@ -22,13 +22,15 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.1.6'  # 2026-09-21
+__version__ = '0.1.7'  # 2026-09-22
 
 from utils import get_timestamp, upython
 
 if not upython:
+
     def const(i):
         return i
+
 
 DEBUG = const(5)
 INFO = const(4)
@@ -53,7 +55,11 @@ def set_level(level):
     if isinstance(level, int):
         if NOTHING <= level <= DEBUG:
             if loglevel >= INFO or level >= INFO:
-                _log('[INFO]     ', f'setting log level to {LEVEL_NAMES[level]}', 'micro_logging:set_level')
+                _log(
+                    '[INFO]     ',
+                    f'setting log level to {LEVEL_NAMES[level]}',
+                    'micro_logging:set_level',
+                )
             loglevel = level
 
 
@@ -63,7 +69,7 @@ def should_log(level):
     return level <= loglevel
 
 
-def _log(level: str, message: str|bytes, caller:str = None):
+def _log(level: str, message: str | bytes, caller: str = None):
     if isinstance(message, bytes):
         message = message.decode('utf-8', 'replace')
     if caller is None:
@@ -72,27 +78,29 @@ def _log(level: str, message: str|bytes, caller:str = None):
         print(get_timestamp(), ' ', level, ' [', caller, '] ', message, sep='')
 
 
-def debug(message: str|bytes, caller: str = None):
+def debug(message: str | bytes, caller: str = None):
     if loglevel >= DEBUG:
         _log('[DEBUG]    ', message, caller)
 
 
-def info(message: str|bytes, caller: str = None):
+def info(message: str | bytes, caller: str = None):
     if loglevel >= INFO:
         _log('[INFO]     ', message, caller)
 
 
-def warning(message: str|bytes, caller: str = None):
+def warning(message: str | bytes, caller: str = None):
     if loglevel >= WARNING:
         _log('[WARNING]  ', message, caller)
 
 
-def error(message: str|bytes, caller: str = None):
+def error(message: str | bytes, caller: str = None):
     if loglevel >= ERROR:
         _log('[ERROR]    ', message, caller)
 
 
-def exception(message: str|bytes, caller:str = None, exc_info:Exception = None) -> None:
+def exception(
+    message: str | bytes, caller: str = None, exc_info: Exception = None
+) -> None:
     # note that exceptions log regardless of loglevel -- these messages are always logged.
     if exc_info is not None:
         _log('[EXCEPTION]', f'{message} {type(exc_info)} {exc_info}', caller)
@@ -100,7 +108,6 @@ def exception(message: str|bytes, caller:str = None, exc_info:Exception = None) 
         _log('[EXCEPTION]', message, caller)
 
 
-def critical(message: str| bytes, caller: str = None):
+def critical(message: str | bytes, caller: str = None):
     if loglevel >= CRITICAL:
         _log('[CRITICAL] ', message, caller)
-

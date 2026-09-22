@@ -22,27 +22,33 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.1.0'  # 2026-09-03
+__version__ = '0.1.2'  # 2026-09-22
 
 import json
 
+
 class _CompatibleEncoder(json.JSONEncoder):
     """Encodes bytes values to UTF-8 strings automatically during json.dumps."""
+
     def default(self, obj):
         if isinstance(obj, bytes):
             return obj.decode('utf-8', errors='ignore')
         return super().default(obj)
 
+
 def _convert_bytes_keys(obj):
     """Recursively ensures dictionary keys are decoded since standard json ignores default()."""
     if isinstance(obj, dict):
         return {
-            (k.decode('utf-8', errors='ignore') if isinstance(k, bytes) else k): _convert_bytes_keys(v)
+            (
+                k.decode('utf-8', errors='ignore') if isinstance(k, bytes) else k
+            ): _convert_bytes_keys(v)
             for k, v in obj.items()
         }
     elif isinstance(obj, list):
         return [_convert_bytes_keys(i) for i in obj]
     return obj
+
 
 def dumps(obj, **kwargs):
     """Serialize obj to a JSON formatted str. Handles bytes keys and values."""
@@ -51,14 +57,17 @@ def dumps(obj, **kwargs):
     kwargs['cls'] = _CompatibleEncoder
     return json.dumps(cleaned_obj, **kwargs)
 
+
 def dump(obj, fp, **kwargs):
     """Serialize obj as a JSON formatted stream to fp."""
     cleaned_obj = _convert_bytes_keys(obj)
     kwargs['cls'] = _CompatibleEncoder
     return json.dump(cleaned_obj, fp, **kwargs)
 
+
 def loads(s, **kwargs):
     return json.loads(s, **kwargs)
+
 
 def load(fp, **kwargs):
     return json.load(fp, **kwargs)
