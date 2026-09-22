@@ -122,8 +122,9 @@ class ReceiveBroadcastsFromN1MM:
             while self.run:
                 try:
                     message = self.receive_socket.recv(ROTOR_BROADCAST_BUF_SIZE)
-                    logging.debug(b'message "%s"' % message,
-                                  'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram')
+                    if logging.should_log(logging.DEBUG):
+                        logging.debug(b'message "%s"' % message,
+                                'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram')
                     rotor_name = get_element(message, b'rotor')
                     for rotator_data in self.rotators_data:
                         if rotor_name == rotator_data.rotator_name:  # or rotor_name == '*':

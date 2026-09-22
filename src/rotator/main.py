@@ -92,7 +92,7 @@ class RotatorTelnetServer:
         requested = -1
         t0 = milliseconds()
         partner = writer.get_extra_info('peername')[0]
-        logging.info(f'serial client connected from {partner}', 'main:connect_to_network')
+        logging.info(b'serial client connected from %s' % partner, 'main:connect_to_network')
         buffer = []
 
         try:
@@ -132,7 +132,7 @@ class RotatorTelnetServer:
             except Exception as exc:
                 logging.exception('exception closing serial client:', 'RotatorTelnetServer:serve_serial_client', exc_info=exc)
             gc.collect()
-        logging.info(f'serial client disconnected, elapsed time {elapsed_ms(t0) / 1000.0:6.3f} seconds',
+        logging.info(b'serial client disconnected, elapsed time %6.3f seconds' % (elapsed_ms(t0) / 1000.0),
                      'RotatorTelnetServer:serve_serial_client')
 
 
@@ -377,18 +377,18 @@ async def main():
                     else:
                         ip_address = socket.gethostbyname_ex(socket.gethostname())[2][-1]
                         netmask = '255.255.255.0'
-                    logging.info(f'ip_address {ip_address}, netmask {netmask}', 'main:main')
+                    logging.info(b'ip_address %s, netmask %s' % (ip_address, netmask), 'main:main')
 
-                    logging.info(f'Starting web service on port {web_port}', 'main:main')
+                    logging.info(b'Starting web service on port %d' % web_port, 'main:main')
                     web_server = await asyncio.start_server(http_server.serve_http_client, '0.0.0.0', web_port)
                     if tcp_port_1 > 0:
-                        logging.info(f'Starting rotator 1 tcp service on port {tcp_port_1}', 'main:main')
+                        logging.info(b'Starting rotator 1 tcp service on port %d' % tcp_port_1, 'main:main')
                         tcp1_server = await asyncio.start_server(RotatorTelnetServer(rotator_1).serve_serial_client,
                                                                  '0.0.0.0', tcp_port_1)
                     else:
                         logging.info('rotor 1 tcp service disabled (port 0)', 'main:main')
                     if tcp_port_2 > 0:
-                        logging.info(f'Starting rotator 2 tcp service on port {tcp_port_2}', 'main:main')
+                        logging.info(b'Starting rotator 2 tcp service on port %d' % tcp_port_2, 'main:main')
                         tcp2_server = await asyncio.start_server(RotatorTelnetServer(rotator_2).serve_serial_client,
                                                                  '0.0.0.0', tcp_port_2)
                     else:
@@ -404,16 +404,16 @@ async def main():
                         if rotor_2_name:
                             data = RotatorData(rotator_2, rotor_2_name)
                             rotators_data.append(data)
-                        logging.info(f'configuring N1MM Mode with ip address {ip_address} net mask {netmask}',
+                        logging.info(b'configuring N1MM Mode with ip address %s net mask %s' % (ip_address, netmask),
                                      'main:main')
                         broadcast_address = calculate_broadcast_address(ip_address, netmask)
-                        logging.info(f'Broadcast address (to N1MM) is {broadcast_address}', 'main:main')
-                        logging.info(f'Starting rotor position broadcasts for N1MM on port {N1MM_BROADCAST_FROM_ROTOR_PORT}',
+                        logging.info(b'Broadcast address (to N1MM) is %s' % broadcast_address, 'main:main')
+                        logging.info(b'Starting rotor position broadcasts for N1MM on port %d' % N1MM_BROADCAST_FROM_ROTOR_PORT,
                                      'main:main')
                         send_broadcast_from_n1mm = SendBroadcastsToN1MM(broadcast_address,
                                                                         target_port=N1MM_BROADCAST_FROM_ROTOR_PORT,
                                                                         rotators_data=rotators_data)
-                        logging.info(f'Starting listener for UDP position broadcasts from N1MM on port {N1MM_ROTOR_BROADCAST_PORT}',
+                        logging.info(b'Starting listener for UDP position broadcasts from N1MM on port %d' % N1MM_ROTOR_BROADCAST_PORT,
                                      'main:main')
                         receive_broadcast_from_n1mm = ReceiveBroadcastsFromN1MM(ip_address,
                                                                                 receive_port=N1MM_ROTOR_BROADCAST_PORT,
@@ -421,7 +421,7 @@ async def main():
                         n1mm_sender = asyncio.create_task(send_broadcast_from_n1mm.send_datagrams())
                         n1mm_receiver = asyncio.create_task(receive_broadcast_from_n1mm.wait_for_datagram())
                 except Exception as ex:
-                    logging.exception(f'failed to start services', 'main:main', ex)
+                    logging.exception('failed to start services', 'main:main', ex)
 
             elif not connected and last_connected: # just disconnected
                 logging.info('network lost, stopping services', 'main:main')
@@ -441,13 +441,13 @@ async def main():
                 morse_code_sender.set_message(last_message)
 
         except Exception as ex:
-            logging.exception(f'main loop error', 'main:main', ex)
+            logging.exception('main loop error', 'main:main', ex)
 
         gc.collect()
         if logging.should_log(logging.DEBUG) and upython:
             free = gc.mem_free()
             alloc = gc.mem_alloc()
-            logging.debug(f'Memory: {alloc} allocated, {free} free ({free / (free + alloc) * 100:6.2f}% free)')
+            logging.debug(b'Memory: %d allocated, %d free (%6.2f %% free)' % (alloc, free, free / (free + alloc) * 100))
 
     if upython:
         if config is not None:
