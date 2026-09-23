@@ -266,7 +266,6 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
                 if port in (N1MM_ROTOR_BROADCAST_PORT, N1MM_BROADCAST_FROM_ROTOR_PORT):
                     errors.append(b'port %d collides with N1MM UDP port' % port)
         if not errors:
-            # a successful save via the web UI means we are no longer in AP mode.
             for key, value in new_values.items():
                 config[key] = value
             response = b'ok\r\n'
@@ -443,8 +442,7 @@ async def main():
                         logging.info(
                             b'Starting listener for UDP position broadcasts from N1MM on port %d' % N1MM_ROTOR_BROADCAST_PORT,
                             'main:main')
-                        receive_broadcast_from_n1mm = ReceiveBroadcastsFromN1MM(ip_address,
-                                                                                receive_port=N1MM_ROTOR_BROADCAST_PORT,
+                        receive_broadcast_from_n1mm = ReceiveBroadcastsFromN1MM(receive_port=N1MM_ROTOR_BROADCAST_PORT,
                                                                                 rotators_data=rotators_data)
                         n1mm_sender = asyncio.create_task(send_broadcast_from_n1mm.send_datagrams())
                         n1mm_receiver = asyncio.create_task(receive_broadcast_from_n1mm.wait_for_datagram())

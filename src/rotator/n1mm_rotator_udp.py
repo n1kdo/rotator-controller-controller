@@ -108,20 +108,19 @@ class ReceiveBroadcastsFromN1MM:
     class that receives rotator control datagrams from N1MM
     """
 
-    def __init__(self, receive_ip, receive_port, rotators_data: list):
+    def __init__(self, receive_port, rotators_data: list):
         self.receive_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.receive_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.rotators_data = rotators_data
         self.run = True
         try:
-            sockaddr = socket.getaddrinfo(receive_ip, receive_port)[0][-1]
+            # bind to all local addresses.
+            sockaddr = ('0.0.0.0', receive_port)
             self.receive_socket.bind(sockaddr)
             self.receive_socket.settimeout(0.001)
         except Exception as exc:
             logging.exception('problem setting up socket', 'n1mm_udp:ReceiveBroadcastsFromN1MM:init', exc_info=exc)
             self.receive_socket.close()
-            # run stays False so wait_for_datagram() exits immediately instead of
-            # polling a closed socket forever.
             self.run = False
 
     async def wait_for_datagram(self):
