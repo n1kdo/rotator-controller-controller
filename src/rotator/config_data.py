@@ -53,6 +53,7 @@ class ConfigData(CachedConfigData):
             'netmask': '255.255.255.0',
             'gateway': '192.168.1.1',
             'dns_server': '8.8.8.8',
+            'hostname': 'pico-w',
             'rotor_1_name': 'rotator1',
             'rotor_1_primitive': False,
             'rotor_2_name': '',  # blank is permitted here and indicates no second rotor.
