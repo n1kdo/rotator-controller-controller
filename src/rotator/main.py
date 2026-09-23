@@ -23,7 +23,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.2.4'  # 2026-09-22
+__version__ = '0.2.4'  # 2026-09-23
 
 import asyncio
 import gc
@@ -157,19 +157,20 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, payload)
     elif verb == HTTP_VERB_POST:
         errors = []
+        new_values = {}
         tcp_port_1 = safe_int(args.get('tcp_port_1'), -2)
         tcp_port_2 = safe_int(args.get('tcp_port_2'), -2)
         web_port = safe_int(args.get('web_port'), -2)
         if 0 <= tcp_port_1 <= 65535:
-            config['tcp_port_1'] = tcp_port_1
+            new_values['tcp_port_1'] = tcp_port_1
         else:
             errors.append(b'tcp_port_1')
         if 0 <= tcp_port_2 <= 65535:
-            config['tcp_port_2'] = tcp_port_2
+            new_values['tcp_port_2'] = tcp_port_2
         else:
             errors.append(b'tcp_port_2')
         if 0 <= web_port <= 65535:
-            config['web_port'] = web_port
+            new_values['web_port'] = web_port
         else:
             errors.append(b'web_port')
         # a port of zero means that rotor's tcp service is disabled; it cannot collide with anything.
@@ -183,75 +184,78 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
             errors.append(b'tcp_port_2 (collides with tcp_port_1 or web_port)')
         ssid = args.get('SSID')
         if ssid is not None:
-            if 0 < len(ssid) < 64:
-                config['SSID'] = ssid
+            if 0 < len(ssid) <= 32:
+                new_values['SSID'] = ssid
             else:
                 errors.append(b'SSID')
         secret = args.get('secret')
         if secret is not None and len(secret) != 0:
-            if 8 <= len(secret) < 32:
-                config['secret'] = secret
+            if 8 <= len(secret) <= 63:
+                new_values['secret'] = secret
             else:
                 errors.append(b'secret')
-        config['ap_mode'] = False
         n1mm_arg = args.get('n1mm')
         if n1mm_arg is not None:
             n1mm = n1mm_arg == 1
-            config['n1mm'] = n1mm
+            new_values['n1mm'] = n1mm
         dhcp_arg = args.get('dhcp')
         if dhcp_arg is not None:
             dhcp = dhcp_arg == 1
-            config['dhcp'] = dhcp
+            new_values['dhcp'] = dhcp
         hostname_arg = args.get('hostname')
         if hostname_arg is not None:
             if 0 <= len(hostname_arg) < 16:
-                config['hostname'] = hostname_arg
+                new_values['hostname'] = hostname_arg
             else:
                 errors.append(b'hostname')
         rotor_1_name = args.get('rotor_1_name')
         if rotor_1_name is not None:
             if isinstance(rotor_1_name, str) and 1 <= len(rotor_1_name) <= 16 and \
                     not any(ch in ' \t\r\n\f' for ch in rotor_1_name):
-                config['rotor_1_name'] = rotor_1_name
+                new_values['rotor_1_name'] = rotor_1_name
             else:
                 errors.append(b'rotor_1_name')
         rotor_1_primitive = args.get('rotor_1_primitive')
         if rotor_1_primitive is not None:
-            config['rotor_1_primitive'] = rotor_1_primitive == 1
+            new_values['rotor_1_primitive'] = rotor_1_primitive == 1
         rotor_2_name = args.get('rotor_2_name')
         if rotor_2_name is not None:
             if isinstance(rotor_2_name, str) and len(rotor_2_name) <= 16:
-                config['rotor_2_name'] = rotor_2_name
+                new_values['rotor_2_name'] = rotor_2_name
             else:
                 errors.append(b'rotor_2_name')
         rotor_2_primitive = args.get('rotor_2_primitive')
         if rotor_2_primitive is not None:
-            config['rotor_2_primitive'] = rotor_2_primitive == 1
+            new_values['rotor_2_primitive'] = rotor_2_primitive == 1
         ip_address = args.get('ip_address')
         if ip_address is not None:
             if is_ipv4(ip_address):
-                config['ip_address'] = ip_address
+                new_values['ip_address'] = ip_address
             else:
                 errors.append(b'ip_address')
         netmask = args.get('netmask')
         if netmask is not None:
             if is_ipv4(netmask):
-                config['netmask'] = netmask
+                new_values['netmask'] = netmask
             else:
                 errors.append(b'netmask')
         gateway = args.get('gateway')
         if gateway is not None:
             if is_ipv4(gateway):
-                config['gateway'] = gateway
+                new_values['gateway'] = gateway
             else:
                 errors.append(b'gateway')
         dns_server = args.get('dns_server')
         if dns_server is not None:
             if is_ipv4(dns_server):
-                config['dns_server'] = dns_server
+                new_values['dns_server'] = dns_server
             else:
                 errors.append(b'dns_server')
         if not errors:
+            # a successful save via the web UI means we are no longer in AP mode.
+            new_values['ap_mode'] = False
+            for key, value in new_values.items():
+                config[key] = value
             response = b'ok\r\n'
             http_status = HTTP_STATUS_OK
             bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
@@ -295,32 +299,41 @@ async def api_bearing_callback(http, verb, args, reader, writer, request_headers
         rotator = rotator_2
         rotor_name = config.get_bytes('rotor_2_name')
     else:
-        response = b'parameter out of range\r\n'
+        response = b'rotor_number parameter out of range\r\n'
         http_status = HTTP_STATUS_BAD_REQUEST
         bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
         return bytes_sent, http_status
 
     if requested_bearing is not None and requested_bearing != '':
-        try:
-            requested_bearing = int(requested_bearing)
-            if 0 <= requested_bearing <= 360:
-                bearing = await rotator.set_rotator_bearing(requested_bearing)
+        requested_bearing = safe_int(requested_bearing)
+        if 0 <= requested_bearing <= 360:
+            bearing = await rotator.set_rotator_bearing(requested_bearing)
+            if bearing >= 0:
                 http_status = HTTP_STATUS_OK
                 response = b'{\r\n  "bearing": %d,\r\n  "rotor": "%s"\r\n}\r\n' % (bearing, rotor_name)
                 bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
             else:
-                http_status = HTTP_STATUS_BAD_REQUEST
-                response = b'parameter out of range\r\n'
+                http_status = HTTP_STATUS_INTERNAL_SERVER_ERROR
+                msg = b'set_rotator_bearing returned error: %d' % bearing
+                logging.warning(msg, 'main:api_bearing_callback')
+                response = b'%s\r\n' % msg
                 bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
-        except Exception as ex:
-            http_status = HTTP_STATUS_INTERNAL_SERVER_ERROR
-            response = b'uh oh: %s' % str(ex).encode()
+        else:
+            http_status = HTTP_STATUS_BAD_REQUEST
+            response = b'bearing (set) parameter out of range\r\n'
             bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     else:
         bearing = await rotator.get_rotator_bearing()
-        http_status = HTTP_STATUS_OK
-        response = b'{\r\n  "bearing": %d,\r\n  "rotor": "%s"\r\n}\r\n' % (bearing, rotor_name)
-        bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
+        if bearing >= 0:
+            response = b'{\r\n  "bearing": %d,\r\n  "rotor": "%s"\r\n}\r\n' % (bearing, rotor_name)
+            http_status = HTTP_STATUS_OK
+            bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
+        else:
+            msg = b'get_rotator_bearing returned error: %d' % bearing
+            logging.warning(msg, 'main:api_bearing_callback')
+            response = b'%s\r\n' % msg
+            http_status = HTTP_STATUS_INTERNAL_SERVER_ERROR
+            bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     return bytes_sent, http_status
 
 
