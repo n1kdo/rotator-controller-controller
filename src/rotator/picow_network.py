@@ -79,7 +79,6 @@ class PicowNetwork:
             self._secret = default_secret
         if len(self._secret) > 63:
             self._secret = self._secret[:63]
-
         self._hostname = config.get('hostname')
         if self._hostname is None or self._hostname == '':
             self._hostname = 'pico-w'
