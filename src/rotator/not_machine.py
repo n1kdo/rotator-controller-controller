@@ -23,7 +23,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.0.3'  # 2026-09-22
+__version__ = '0.0.4'  # 2026-09-23
 
 import micro_logging as logging
 
@@ -56,11 +56,24 @@ class Machine(object):
         OUT = 1
         IN = 0
         PULL_UP = 0
+        PULL_DOWN = 1
 
-        def __init__(self, name, options=0, value=0):
-            self.pin_value = value
-            self.name = name
-            self.options = options
+        def __init__(self, pin_id, mode:int=-1, pull:int=-1, value=None, drive:int=0, alt:int=-1):
+            self._id = pin_id
+            self._mode = mode
+            self._pull = pull
+            self._drive = drive
+            self._alt = alt
+            if mode == self.OUT:
+                if value is not None:
+                    self.pin_value = value
+                else:
+                    self.pin_value = 0
+            elif mode == self.IN:
+                if pull == self.PULL_UP:
+                    self.pin_value = 1
+                else:
+                    self.pin_value = 0
 
         def on(self):
             self.pin_value = 1
