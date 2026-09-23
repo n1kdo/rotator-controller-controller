@@ -25,14 +25,15 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.3'  # 2026-09-21
+__version__ = '0.9.4'  # 2026-09-22
 
 # disable pylint import error
 # pylint: disable=E0401
 
-from serialport import SerialPort
 import asyncio
+
 import micro_logging as logging
+from serialport import SerialPort
 from utils import elapsed_ms, milliseconds
 
 
@@ -50,7 +51,7 @@ class Rotator:
         :param primitive: set this true if rotor control is not Rotor-EZ or Green Heron
         """
         self.serial_port_locked = True
-        self.primitive = primitive # set True to use two-command mode for NOT Rotor-EZ or Green Heron
+        self.primitive = primitive  # set True to use two-command mode for NOT Rotor-EZ or Green Heron
         self.buffer = bytearray(16)
         self.last_bearing = Rotator.ERROR_UNKNOWN
         self.last_requested_bearing = Rotator.ERROR_UNKNOWN

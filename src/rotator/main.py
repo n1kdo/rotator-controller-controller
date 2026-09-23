@@ -23,19 +23,19 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.2.3'  # 2026-09-22
+__version__ = '0.2.4'  # 2026-09-22
 
 import asyncio
 import gc
 import socket
-import micro_logging as logging
 
+import micro_logging as logging
+from dcu1_rotator import Rotator
 from http_server import (HttpServer,
                          HTTP_STATUS_OK, HTTP_STATUS_BAD_REQUEST, HTTP_STATUS_MOVED_PERMANENTLY,
                          HTTP_STATUS_INTERNAL_SERVER_ERROR, HTTP_VERB_GET, HTTP_VERB_POST)
 from morse_code import MorseCode
 from n1mm_rotator_udp import RotatorData, calculate_broadcast_address, ReceiveBroadcastsFromN1MM, SendBroadcastsToN1MM
-from dcu1_rotator import Rotator
 from utils import elapsed_ms, is_ipv4, milliseconds, safe_int, upython
 
 if upython:
@@ -74,6 +74,7 @@ config = ConfigData()
 
 # http server
 http_server = HttpServer(content_dir=CONTENT_DIR)
+
 
 class RotatorTelnetServer:
     def __init__(self, rotator):
@@ -124,13 +125,15 @@ class RotatorTelnetServer:
                                     elif command == b'AM1;' and 0 <= requested <= 360:  # move rotator
                                         await self._rotator.set_rotator_bearing(requested)
         except Exception as exc:
-            logging.exception('exception in serve_serial_client:', 'RotatorTelnetServer:serve_serial_client', exc_info=exc)
+            logging.exception('exception in serve_serial_client:', 'RotatorTelnetServer:serve_serial_client',
+                              exc_info=exc)
         finally:
             try:
                 writer.close()
                 await writer.wait_closed()
             except Exception as exc:
-                logging.exception('exception closing serial client:', 'RotatorTelnetServer:serve_serial_client', exc_info=exc)
+                logging.exception('exception closing serial client:', 'RotatorTelnetServer:serve_serial_client',
+                                  exc_info=exc)
             gc.collect()
         logging.info(b'serial client disconnected, elapsed time %6.3f seconds' % (elapsed_ms(t0) / 1000.0),
                      'RotatorTelnetServer:serve_serial_client')
@@ -369,7 +372,7 @@ async def main():
             else:
                 connected = True
 
-            if connected and not last_connected: # just connected.
+            if connected and not last_connected:  # just connected.
                 try:
                     if picow_network is not None:
                         ip_address = picow_network.get_ip_address()
@@ -408,13 +411,15 @@ async def main():
                                      'main:main')
                         broadcast_address = calculate_broadcast_address(ip_address, netmask)
                         logging.info(b'Broadcast address (to N1MM) is %s' % broadcast_address, 'main:main')
-                        logging.info(b'Starting rotor position broadcasts for N1MM on port %d' % N1MM_BROADCAST_FROM_ROTOR_PORT,
-                                     'main:main')
+                        logging.info(
+                            b'Starting rotor position broadcasts for N1MM on port %d' % N1MM_BROADCAST_FROM_ROTOR_PORT,
+                            'main:main')
                         send_broadcast_from_n1mm = SendBroadcastsToN1MM(broadcast_address,
                                                                         target_port=N1MM_BROADCAST_FROM_ROTOR_PORT,
                                                                         rotators_data=rotators_data)
-                        logging.info(b'Starting listener for UDP position broadcasts from N1MM on port %d' % N1MM_ROTOR_BROADCAST_PORT,
-                                     'main:main')
+                        logging.info(
+                            b'Starting listener for UDP position broadcasts from N1MM on port %d' % N1MM_ROTOR_BROADCAST_PORT,
+                            'main:main')
                         receive_broadcast_from_n1mm = ReceiveBroadcastsFromN1MM(ip_address,
                                                                                 receive_port=N1MM_ROTOR_BROADCAST_PORT,
                                                                                 rotators_data=rotators_data)
@@ -423,7 +428,7 @@ async def main():
                 except Exception as ex:
                     logging.exception('failed to start services', 'main:main', ex)
 
-            elif not connected and last_connected: # just disconnected
+            elif not connected and last_connected:  # just disconnected
                 logging.info('network lost, stopping services', 'main:main')
                 for server in (web_server, tcp1_server, tcp2_server):
                     if server is not None:

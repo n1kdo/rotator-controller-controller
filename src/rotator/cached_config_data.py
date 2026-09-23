@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2026 J. B. Otterson N1KDO.'
-__version__ = '0.0.6'  # 2026-09-18
+__version__ = '0.0.7'  # 2026-09-22
 
 #
 # Copyright 2026 J. B. Otterson N1KDO.
@@ -30,9 +30,11 @@ __version__ = '0.0.6'  # 2026-09-18
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import asyncio
-import micro_logging as logging
 import os
+
+import micro_logging as logging
 from utils import upython
+
 if upython:
     import json
 else:

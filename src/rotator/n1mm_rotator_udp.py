@@ -19,11 +19,12 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.5'  # 2026-09-22
+__version__ = '0.9.6'  # 2026-09-22
 
 import asyncio
-import micro_logging as logging
 import socket
+
+import micro_logging as logging
 from dcu1_rotator import Rotator
 
 ROTOR_BROADCAST_BUF_SIZE = 512
@@ -39,28 +40,24 @@ def calculate_broadcast_address(ip_address, netmask):
     )
     mask_mask = mask_int ^ 0xFFFFFFFF
     bcast_int = ip_int | mask_mask
-    bcast_addr = '.'.join(
-        map(
-            str,
-            [
-                ((bcast_int >> 24) & 0xFF),
-                ((bcast_int >> 16) & 0xFF),
-                ((bcast_int >> 8) & 0xFF),
-                (bcast_int & 0xFF),
-            ],
-        )
-    )
+    octets = [((bcast_int >> 24) & 0xFF), ((bcast_int >> 16) & 0xFF), ((bcast_int >> 8) & 0xFF), (bcast_int & 0xFF)]
+    bcast_addr = '.'.join(map(str, octets))
     return bcast_addr
 
 
 def get_element(src: bytes, name: bytes) -> bytes | None:
-    i = src.index(b'<' + name + b'>')
-    if i >= 0:
-        start = i + 2 + len(name)
-        ii = src.index(b'<', start)
-        if ii > start:
-            return src[start:ii]
-    return None
+    if name not in src:
+        return None
+    try:
+        i = src.index(b'<' + name + b'>')
+        if i >= 0:
+            start = i + 2 + len(name)
+            ii = src.index(b'<', start)
+            if ii > start:
+                return src[start:ii]
+        return None
+    except ValueError:
+        return None
 
 
 class RotatorData:
@@ -94,18 +91,11 @@ class SendBroadcastsToN1MM:
                         self.send(payload)
                         await asyncio.sleep(0.050)
                     if not last_ok:
-                        logging.info(
-                            'N1MM broadcast sending resumed.',
-                            'n1mm_rotator_udp:send_datagrams',
-                        )
+                        logging.info('N1MM broadcast sending resumed.', 'n1mm_rotator_udp:send_datagrams')
                     last_ok = True
                 except OSError as exc:
                     if last_ok:
-                        logging.exception(
-                            'N1MM broadcast send failed',
-                            'n1mm_rotator_udp:send_datagrams',
-                            exc,
-                        )
+                        logging.exception('N1MM broadcast send failed', 'n1mm_rotator_udp:send_datagrams', exc)
                     last_ok = False
                 await asyncio.sleep(1.50)
         finally:
@@ -127,11 +117,7 @@ class ReceiveBroadcastsFromN1MM:
             self.receive_socket.bind(sockaddr)
             self.receive_socket.settimeout(0.001)
         except Exception as exc:
-            logging.exception(
-                'problem setting up socket',
-                'n1mm_udp:ReceiveBroadcastsFromN1MM:init',
-                exc_info=exc,
-            )
+            logging.exception('problem setting up socket', 'n1mm_udp:ReceiveBroadcastsFromN1MM:init', exc_info=exc)
             self.receive_socket.close()
             # run stays False so wait_for_datagram() exits immediately instead of
             # polling a closed socket forever.
@@ -143,41 +129,37 @@ class ReceiveBroadcastsFromN1MM:
                 try:
                     message = self.receive_socket.recv(ROTOR_BROADCAST_BUF_SIZE)
                     if logging.should_log(logging.DEBUG):
-                        logging.debug(
-                            b'message "%s"' % message,
-                            'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram',
-                        )
-                    rotor_name = get_element(message, b'rotor')
+                        logging.debug(b'message "%s"' % message, 'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram')
+                    rotator_name = get_element(message, b'rotor')
+                    found_rotator = False
                     for rotator_data in self.rotators_data:
-                        if (
-                            rotor_name == rotator_data.rotator_name
-                        ):  # or rotor_name == '*':
+                        if rotator_name == rotator_data.rotator_name or rotator_name == b'*':
+                            found_rotator = True
                             goazi = get_element(message, b'goazi')
+                            if goazi is None:
+                                logging.warning(b'message has no <goazi> element',
+                                                'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram')
+                                continue
                             bearing = int(float(goazi))
                             if not 0 <= bearing <= 360:
-                                logging.info(
-                                    b'ignoring out-of-range bearing %d from N1MM'
-                                    % bearing,
-                                    'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram',
-                                )
+                                logging.info(b'ignoring out-of-range bearing %d from N1MM' % bearing,
+                                             'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram')
                             else:
                                 result = await rotator_data.rotator.set_rotator_bearing(
                                     bearing
                                 )
                                 if result < 0:
-                                    logging.info(
-                                        b'set_rotator_bearing result=%d' % result,
-                                        'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram',
-                                    )
+                                    logging.info(b'set_rotator_bearing result=%d' % result,
+                                                 'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram')
+                    if not found_rotator:
+                        logging.warning(b'rotator not found: %s' % rotator_name,
+                                        'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram')
                 except OSError as exc:
                     # this is a timeout exception, no data was received, this is not abnormal.
                     pass
                 except Exception as exc:
-                    logging.exception(
-                        'problem receiving datagram',
-                        'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram',
-                        exc_info=exc,
-                    )
+                    logging.exception('problem receiving datagram',
+                                      'n1mm_udp:ReceiveBroadcastsFromN1MM:wait_for_datagram', exc_info=exc)
                 await asyncio.sleep(0.5)
         finally:
             self.receive_socket.close()
