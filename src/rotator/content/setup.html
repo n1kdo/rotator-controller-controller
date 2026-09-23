@@ -219,7 +219,7 @@
             return;
         }
         let x = parseInt(web_port);
-        if (x < 0 || x > 65535) {
+        if (x < 1 || x > 65535) {
             alert("Invalid Web Port");
             return;
         }
@@ -228,11 +228,11 @@
             return;
         }
         // an empty name for rotor #2 is allowed, it indicates no rotor 2 is present
-        if (rotor_2_name.length > 16) {  // empty is permitted here, no rotor
+        if ((rotor_2_name.length > 16) || (/\s/.test(rotor_2_name))) {
             alert("Invalid Rotor 2 Name");
             return;
         }
-        if ((hostname.length < 1) || (hostname.length > 64) || (/\s/.test(hostname))) {
+        if ((hostname.length < 1) || (hostname.length > 16) || (/\s/.test(hostname))) {
             alert("Invalid hostname");
             return;
         }
@@ -350,7 +350,7 @@
         </p>
         <p>
             <label for="web_port_input">Web Port:</label>
-            <input type="number" id="web_port_input" class="port_number" min="0" max="65535">
+            <input type="number" id="web_port_input" class="port_number" min="1" max="65535">
         </p>
         <p>
             <label for="n1mm_input">N1MM Mode:</label>
@@ -380,7 +380,7 @@
         </p>
             <p>
                 <label for="hostname_input">Hostname:</label>
-                <input type="text" id="hostname_input" maxlength="64">
+                <input type="text" id="hostname_input" maxlength="16">
             </p>
         <p>
             <label for="ip_address_input">IP Address:</label>

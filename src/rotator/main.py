@@ -50,7 +50,7 @@ else:
 onboard = machine.Pin('LED', machine.Pin.OUT, value=0)
 onboard.on()
 morse_led = machine.Pin(2, machine.Pin.OUT, value=0)  # status LED
-reset_button = machine.Pin(3, machine.Pin.IN, machine.Pin.PULL_UP)
+ap_mode_button = machine.Pin(3, machine.Pin.IN, machine.Pin.PULL_UP)
 
 CONTENT_DIR = 'content/'
 
@@ -169,14 +169,21 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
             new_values['tcp_port_2'] = tcp_port_2
         else:
             errors.append(b'tcp_port_2')
-        if 0 <= web_port <= 65535:
+        # a web port of zero is not permitted; the web interface must always be available.
+        if 1 <= web_port <= 65535:
             new_values['web_port'] = web_port
         else:
             errors.append(b'web_port')
         # a port of zero means that rotor's tcp service is disabled; it cannot collide with anything.
-        effective_tcp_port_1 = tcp_port_1 if 1 <= tcp_port_1 <= 65535 else None
-        effective_tcp_port_2 = tcp_port_2 if 1 <= tcp_port_2 <= 65535 else None
-        effective_web_port = web_port if 1 <= web_port <= 65535 else DEFAULT_WEB_PORT
+        # ports not in this POST keep their currently-configured values for collision checking.
+        effective_tcp_port_1 = tcp_port_1 if 1 <= tcp_port_1 <= 65535 else safe_int(config.get('tcp_port_1'), -1)
+        effective_tcp_port_2 = tcp_port_2 if 1 <= tcp_port_2 <= 65535 else safe_int(config.get('tcp_port_2'), -1)
+        effective_web_port = web_port if 1 <= web_port <= 65535 else \
+            safe_int(config.get('web_port') or DEFAULT_WEB_PORT, DEFAULT_WEB_PORT)
+        if not 1 <= effective_tcp_port_1 <= 65535:
+            effective_tcp_port_1 = None
+        if not 1 <= effective_tcp_port_2 <= 65535:
+            effective_tcp_port_2 = None
         if effective_tcp_port_1 is not None and effective_tcp_port_1 == effective_web_port:
             errors.append(b'tcp_port_1 (collides with web_port)')
         if effective_tcp_port_2 is not None and \
@@ -204,7 +211,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
             new_values['dhcp'] = dhcp
         hostname_arg = args.get('hostname')
         if hostname_arg is not None:
-            if 0 <= len(hostname_arg) < 16:
+            if 0 < len(hostname_arg) <= 16:
                 new_values['hostname'] = hostname_arg
             else:
                 errors.append(b'hostname')
@@ -220,7 +227,9 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
             new_values['rotor_1_primitive'] = rotor_1_primitive == 1
         rotor_2_name = args.get('rotor_2_name')
         if rotor_2_name is not None:
-            if isinstance(rotor_2_name, str) and len(rotor_2_name) <= 16:
+            # an empty name is permitted here, it indicates no second rotor.
+            if isinstance(rotor_2_name, str) and len(rotor_2_name) <= 16 and \
+                    not any(ch in ' \t\r\n\f' for ch in rotor_2_name):
                 new_values['rotor_2_name'] = rotor_2_name
             else:
                 errors.append(b'rotor_2_name')
@@ -251,9 +260,13 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
                 new_values['dns_server'] = dns_server
             else:
                 errors.append(b'dns_server')
+        # when N1MM mode is enabled, the fixed N1MM UDP ports cannot collide with any tcp service.
+        if new_values.get('n1mm', config.get('n1mm')):
+            for port in (effective_tcp_port_1, effective_tcp_port_2, effective_web_port):
+                if port in (N1MM_ROTOR_BROADCAST_PORT, N1MM_BROADCAST_FROM_ROTOR_PORT):
+                    errors.append(b'port %d collides with N1MM UDP port' % port)
         if not errors:
             # a successful save via the web UI means we are no longer in AP mode.
-            new_values['ap_mode'] = False
             for key, value in new_values.items():
                 config[key] = value
             response = b'ok\r\n'
@@ -340,15 +353,13 @@ async def api_bearing_callback(http, verb, args, reader, writer, request_headers
 async def main():
     global config, keep_running, picow_network, rotator_1, rotator_2
 
-    if reset_button.value() == 0:
-        # device was powered up with button pressed, select AP mode.
-        config['ap_mode'] = True
+    ap_mode = ap_mode_button.value() == 0
 
     rotator_1 = Rotator('0', config.get('rotor_1_primitive'))
     rotator_2 = Rotator('1', config.get('rotor_2_primitive'))
 
     if upython:
-        picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET)
+        picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET, access_point_mode=ap_mode)
         morse_code_sender = MorseCode(morse_led)
     else:
         picow_network = None
@@ -373,7 +384,6 @@ async def main():
     tcp1_server = None
     tcp2_server = None
     last_message = b''
-    ap_mode = config.get('ap_mode', False)
     while keep_running:
         await asyncio.sleep(1.0)
         last_connected = connected

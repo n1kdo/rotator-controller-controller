@@ -58,7 +58,8 @@ class PicowNetwork:
                  default_ssid: str = 'PICO-W',
                  default_secret: str = 'PICO-WIFI',
                  message_func=None,
-                 long_messages=False) -> None:
+                 long_messages=False,
+                 access_point_mode: bool = False) -> None:
         self._connected = False
         self._connecting = False
         self._default_secret = default_secret
@@ -86,7 +87,7 @@ class PicowNetwork:
         if self._hostname_bytes is None:
             self._hostname_bytes = self._hostname.encode()
 
-        self._access_point_mode = config.get('ap_mode', False)
+        self._access_point_mode = access_point_mode
 
         self._is_dhcp = config.get('dhcp', True)
         if self._is_dhcp:

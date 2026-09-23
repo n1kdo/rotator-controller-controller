@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2026 J. B. Otterson N1KDO.'
-__version__ = '0.0.1'  # 2026-09-20
+__version__ = '0.0.1'  # 2026-09-23
 
 #
 # Copyright 2026 J. B. Otterson N1KDO.
@@ -48,7 +48,6 @@ class ConfigData(CachedConfigData):
         return {
             'SSID': 'set your SSID here',
             'secret': DEFAULT_SECRET,
-            'ap_mode': False,
             'dhcp': True,
             'ip_address': '192.168.1.73',
             'netmask': '255.255.255.0',
