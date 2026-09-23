@@ -19,7 +19,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.6'  # 2026-09-22
+__version__ = '0.9.6'  # 2026-09-23
 
 import asyncio
 import socket
@@ -73,7 +73,9 @@ class SendBroadcastsToN1MM:
 
     def __init__(self, target_ip, target_port, rotators_data: list):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.socket.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
         self.sockaddr = socket.getaddrinfo(target_ip, target_port)[0][-1]
         self.rotators_data = rotators_data
 
