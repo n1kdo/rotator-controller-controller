@@ -2,7 +2,7 @@
 
 Or: _How to Add Internet-of-Things Capabilities to Legacy Products_   
 Jeff Otterson, N1KDO  
-Updated September 29, 2026, for the dual-rotator controller version.  
+Updated October 02, 2026, for the dual-rotator controller version.  
 
 ![](board_photo.jpg)
 
@@ -47,6 +47,12 @@ controller operates at -12 and +12 volts (ideally). A Maxim MAX3232 IC is used t
 volts and RS-232 levels. There is also a LED and current limiting resistor, and the “mode” pushbutton.
 
 ## Construction
+
+This project has been updated to support two rotators using the 
+[Pico-W Dual Serial Card] (https://github.com/n1kdo/pico-w-dual-serial).  There 
+are assembly instructions and a Bill of Materials (BOM) in that GitHub repository.
+
+The single-serial-port version of this project is obsolete.  Use the Dual Serial Card version.
 
 The basic circuit has only about 18 electronic components in addition to the Pico-W. It can easily be built on
 perf board; this is how I built my prototype. Later, I laid out a circuit board that makes assembly and packaging  
