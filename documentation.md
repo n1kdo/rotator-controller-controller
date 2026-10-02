@@ -1,7 +1,8 @@
 # A Wireless Rotator Controller-Controller
 
 Or: _How to Add Internet-of-Things Capabilities to Legacy Products_   
-Jeff Otterson, N1KDO
+Jeff Otterson, N1KDO  
+Updated September 29, 2026, for the dual-rotator controller version.  
 
 ![](board_photo.jpg)
 
@@ -47,13 +48,13 @@ volts and RS-232 levels. There is also a LED and current limiting resistor, and 
 
 ## Construction
 
-The basic circuit has only 10 electronic components in addition to the Pico-W. It can easily be built on perf board;
-this is how I built my prototype. I laid out a circuit board that makes assembly and packaging easy. Both the schematic
-and the circuit board were designed using the open-source Kicad 6 software; all the artifacts are in the GitHub
-repository.
+The basic circuit has only about 18 electronic components in addition to the Pico-W. It can easily be built on
+perf board; this is how I built my prototype. Later, I laid out a circuit board that makes assembly and packaging  
+easy. Both the schematic and the circuit board were designed using the open-source Kicad software;  
+all the artifacts are in the GitHub repository.
 
 No particular care is needed in the wiring as all the signals are low speed. Attention should be given to the polarity
-of the tantalum capacitors, the Schottky diode, and the LED. The LED needs the leads bent 90 degrees about 1/8 of an
+of the tantalum capacitors, the Schottky diode and the LED. The LED needs the leads bent 90 degrees about 1/8 of an
 inch from the body, with the shiny part of the LED facing away from you, and the longer lead on the right, carefully
 bend the legs down so that the LED will slightly hang over the edge of the board.
 
@@ -75,20 +76,14 @@ LED.
 
 There are three methods of powering the circuit. While installing the Rotor-EZ into my rotator controller, I hard-wired
 +5 volts to pin 1 of the DE9 connector from the rotator controller. (This pin is normally used as “carrier detect” for a
-MODEM, it is safe to put +5 here, it will not blow up any connected equipment.) Install a wire jumper from H2 to H4 on
-the board to “rob” power from the rotator controller.
+MODEM, it is safe to put +5 here, it will not blow up any connected equipment.) Install a wire jumper from H1 to H2 on
+the board to “rob” +5 volts power from the rotator controller.
 
 The circuit can also be powered through the micro-USB connector on the Pico-W and a cellphone charger can be used to
 power it through this connector. When installing software, the board is powered by the host through the USB connection.
 
 Finally, to support further experimentation, the board has provisions to allow the installation of a 7805 voltage
-regulator and associated bypass capacitors. Unregulated voltage is supplied on H1, and ground is on H3.
-
-## The Playground
-
-I knew I had other ideas for this project, I added a 10x10 grid of solder pads to the board for future experimentation.
-The top row of pins is wired to +3.3 volts, and the bottom row of pins to ground. In addition, every pin of the Pico-W
-is brought out to a “test point” hole, so the signals are easy to access.
+regulator and associated bypass capacitors. Unregulated voltage is supplied through the coaxial power connector J3.
 
 ## Installing the Software
 
@@ -138,30 +133,35 @@ While a web interface to your rotator controller is certainly useful, the projec
 rotator through network serial port emulation. This allows your logging or contesting software to command the rotator
 over the network. If your software does not support network serial port access (most does not) then you can use software
 like ‘com0com’ and ‘com2tcp’ (note 5) to create a “virtual” serial port on your PC that connects to the rotator
-controller-controller through the network. I have verified that this works by testing with both “LP-Rotor”  (note 6) and
-“DXView” (note 70. Consult your favorite search engine for com0com and com2tcp set up information.
+controller-controller through the network. I have verified that this works by testing with both “LP-Rotor” (note 6) and
+“DXView” (note 7.) Consult your favorite search engine for com0com and com2tcp set up information.
 
 ## N1MM+ Integration
 
 The rotator controller-controller can also interoperate with N1MM+. It accepts and transmits UDP network messages that
-allow the rotator to be directly controlled over the network with N1MM+.
+allow the rotator(s) to be directly controlled over the network with N1MM+.
+
+See the [Using the Rotator Controller-Controller with N1MM+](N1MM.md) file for more information on N1MM+ setup.
 
 ## Chickens and Eggs
 
 The controller-controller has a setup web page that allows you to set the SSID and secret to connect to you Wi-Fi
 network, but how can you access this page if the controller is not already connected to your network? This is the
-function of the “mode” button. When the mode button is pressed, the controller-controller restarts as a Wi-Fi access
-point named “Rotator” with the secret password “NorthSouth”. Connect to this access point with your phone or other Wi-Fi
-device. Some devices will complain that this network does not offer Internet access--that is ok, because it does not!
+function of the “mode” button. 
+
+Power up the controller-controller with the mode button pressed, and the controller-controller will appear as a
+restarts as a Wi-Fi access point named “Rotatorxxxxx” with the secret password “NorthSouth”. The 'xxxxxx' is the 
+last three octets of the controller-controller’s MAC address, don't worry about this unless you have several of
+these all configured as access points at once.
+
+Connect to this access point with your phone or other Wi-Fi device. Some devices will complain that this network
+does not offer Internet access--that is ok, because it does not!
 You may need to check a box to keep your device connected to this network.
 
 Once connected to the “Rotator” network, use your web browser to access the controller-controller by loading the web
-page at http://192.168.4.1 – from here you can click the “Setup” link and configure the controller-controller. After you
-enter your network’s SSID and secret, click the “Apply” button to save the configuration, and then press the “Restart”
-button to return the controller-controller to normal mode.
-
-Access point mode can also be used in locations where there is no Wi-Fi service, the controller-controller is completely
-usable in access point mode.
+page at http://192.168.4.1 – from here you can click the “Setup” link and configure the controller-controller. 
+After you enter your network’s SSID and secret, click the “Apply” button to save the configuration, and then press 
+the “Restart” button to return the controller-controller to normal mode.
 
 ## A note about IP addressing
 
@@ -199,29 +199,14 @@ It is my hope that this project will be useful by itself, but also serve as a ba
 IOT integrations with their existing gear. The Pico-W represents a tremendous opportunity to build this kind of stuff on
 the cheap. I hope you find this project useful and interesting.
 
-## Parts List
+## The Hardware.
 
-```
-C1-C7 .1 uF 35V tantalum capacitor, KEMET T350A104M035AT or similar, see notes
-D1 1N5819 40V 1A Schottky Diode
-D2 T1 White LED, LITEON LTW-420D7 or similar
-J1 DE9P connector, Amphenol L717SDE09PA4CH4RC309
-R1 330 ohm ¼ watt leaded resistor
-SW1 SPST-NO pushbutton, NKK Switches GB215AH
-SW1-cap pushbutton cap NKK Switches AT4063A
-U1 Raspberry Pi Pico-W, see notes 
-U2 MAX3232 16-pin DIP MAXIM MAX3232ECPE+
-U3 7805 three-terminal 5V regulator in TO-220 case, TI UA7805CKCT or similar, see notes
-Enclosure: Hammond 1591XXSFLBK
-```
+This version of the controller-controller supports TWO rotor control boxes on the 
+[Pico-W Dual Serial board](https://github.com/n1kdo/pico-w-dual-serial).  The parts list and Kicad files for the 
+electronics can be found at that link.
 
-### Notes:
-
-If you decide to include the 5 volt regulator parts, include C1, C2, and C3, otherwise, these are not needed.
-
-The Raspberry Pi Pico-W is in short supply. I have bought some from Vilros.com, SparkFun.com, and CanaKit.com (from
-Canada). Adafruit.com also lists them. They are inexpensive enough, and so much fun, that I will usually buy two when I
-find availability.
+This is the same hardware that my  
+[KPA-500 Remote](https://github.com/n1kdo/KPA500-remote) software also runs on.
 
 ## References
 

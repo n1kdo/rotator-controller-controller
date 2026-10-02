@@ -25,14 +25,16 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.0'
+__version__ = '0.9.4'  # 2026-09-22
 
 # disable pylint import error
 # pylint: disable=E0401
 
-from serialport import SerialPort
 import asyncio
+
 import micro_logging as logging
+from serialport import SerialPort
+from utils import elapsed_ms, milliseconds
 
 
 class Rotator:
@@ -43,17 +45,17 @@ class Rotator:
     ERROR_BUSY = -13
     ERROR_UNKNOWN = -99
 
-    def __init__(self, primitive=False):
+    def __init__(self, portName=None, primitive=False):
         """
         set up rotator control class
         :param primitive: set this true if rotor control is not Rotor-EZ or Green Heron
         """
         self.serial_port_locked = True
-        self.primitive = primitive # set True to use two-command mode for NOT Rotor-EZ or Green Heron
+        self.primitive = primitive  # set True to use two-command mode for NOT Rotor-EZ or Green Heron
         self.buffer = bytearray(16)
         self.last_bearing = Rotator.ERROR_UNKNOWN
         self.last_requested_bearing = Rotator.ERROR_UNKNOWN
-        self.serial_port = SerialPort(baudrate=Rotator.BAUD_RATE, timeout=0)
+        self.serial_port = SerialPort(name=portName, baudrate=Rotator.BAUD_RATE, timeout=0)
         self.initialized = False
         self.serial_port_locked = False
 
@@ -71,10 +73,18 @@ class Rotator:
         # send the message
         self.serial_port.write(message)
         self.serial_port.flush()
-        # wait a short bit
-        await asyncio.sleep(timeout)
-        bytes_received = self.serial_port.readinto(self.buffer)
-        return self.buffer[:bytes_received].decode()
+        received = bytearray()
+        t0 = milliseconds()
+        while True:
+            count = self.serial_port.readinto(self.buffer)
+            if count > 0:
+                received.extend(self.buffer[:count])
+                if received[0] == ord(';') and len(received) >= 4:
+                    break  # complete bearing frame.
+            if elapsed_ms(t0) >= int(timeout * 1000):
+                break
+            await asyncio.sleep(0.005)
+        return received
 
     async def get_rotator_bearing(self):
         count = 0
@@ -91,24 +101,24 @@ class Rotator:
             if len(result) == 0:
                 self.last_bearing = Rotator.ERROR_NO_DATA
             else:
-                if result[0] == ';':
+                if result[0] == ord(';') and len(result) >= 4:
                     self.last_bearing = int(result[1:])
                 else:
                     logging.warning(f'unexpected result: "{result}"', 'dcu1_rotator:get_rotator_bearing')
                     self.last_bearing = Rotator.ERROR_BAD_DATA
         except Exception as ex:
             logging.exception(f'exception in get_rotator_bearing', 'dcu1_rotator:get_rotator_bearing', exc_info=ex)
-            print(ex)
             self.last_bearing = Rotator.ERROR_ASYNC
         finally:
             self.serial_port_locked = False
         return self.last_bearing
 
     async def set_rotator_bearing(self, bearing):
+        if self.serial_port_locked:
+            logging.warning('busy, waiting for serial port lock', 'dcu1_rotator:set_rotator_bearing')
         locked_count = 0
         while self.serial_port_locked and locked_count < 10:
             locked_count += 1
-            logging.warning('busy', 'dcu1_rotator:set_rotator_bearing')
             await asyncio.sleep(.050)
         if self.serial_port_locked:
             result = Rotator.ERROR_BUSY
@@ -118,18 +128,19 @@ class Rotator:
                 if not self.initialized:
                     await self.initialize()
                 if self.primitive:
-                    # Hygain DCU-3 set direction
+                    # Hygain DCU-3 set bearing
                     # not expecting any response.
-                    message = f'AP1{bearing:03n};'.encode('utf-8')
+                    message = b'AP1%03d;' % int(bearing)
                     await self.send_and_receive(message)
                     await self.send_and_receive(b'AM1;')
                     self.last_requested_bearing = bearing
                 else:
-                    message = f'AP1{int(bearing):03n}\r'.encode('utf-8')
+                    # single-command set bearing and start rotation for non-primitive controllers
+                    message = b'AP1%03d\r' % int(bearing)
                     await self.send_and_receive(message)
                 result = bearing
             except Exception as ex:
-                print(ex)
+                logging.exception('failure to send message to rotator', 'dcu1_rotator:set_rotator_bearing', exc_info=ex)
                 result = Rotator.ERROR_ASYNC
             finally:
                 self.serial_port_locked = False
