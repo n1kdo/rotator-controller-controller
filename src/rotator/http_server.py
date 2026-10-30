@@ -23,7 +23,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 '''
-__version__ = '0.1.24'  # 2026-09-22
+__version__ = '0.1.25'  # 2026-10-27
 
 import asyncio
 import os
@@ -219,14 +219,18 @@ class HttpServer:
                     if bytes_since_drain:
                         await writer.drain()
         except Exception as exc:
-            logging.exception(b'error serving %s' % filename, 'http_server:serve_content', exc_info=exc)
+            if isinstance(exc, OSError) and ('ECONNRESET' in str(exc) or 'CONN_EOF' in str(exc)
+                                             or 'FATAL_ALERT' in str(exc)):
+                logging.info(b'client went away', 'http_server:serve_content')
+            else:
+                logging.exception(b'error serving %s' % filename, 'http_server:serve_content', exc_info=exc)
         return content_length, HTTP_STATUS_OK
 
     async def start_response(self, writer, http_status: int = HTTP_STATUS_OK, content_type: bytes = b'',
                              response_size: int = 0, extra_headers: list[bytes] = None):
         status_text = self.HTTP_STATUS_TEXT.get(http_status) or b'Confused'
         parts = [
-            b'HTTP/1.0 %d %s\r\n' % (http_status, status_text),
+            b'HTTP/1.1 %d %s\r\n' % (http_status, status_text),
             b'Access-Control-Allow-Origin: *\r\n',
         ]  # CORS override
         if content_type is not None and len(content_type) > 0:
@@ -314,15 +318,34 @@ class HttpServer:
         return args
 
     async def serve_http_client(self, reader, writer):
+        # One request per connection (the plain HTTP path). The serialized TLS path keeps
+        # its own connection open between requests; see main.py.
         partner = writer.get_extra_info('peername')[0]
+        if logging.should_log(logging.DEBUG):
+            logging.debug(b'web client connected from %s' % partner, 'http_server:serve_http_client')
         try:
-            await self._handle_request(reader, writer)
+            lines = LineReader(reader, max_line_length=_BUFFER_SIZE)
+            request_line = await asyncio.wait_for(lines.readline(), _REQUEST_TIMEOUT)
+            if request_line:  # empty means the peer closed before sending anything.
+                await self._handle_request(reader, writer, lines, request_line)
+        except TimeoutError:
+            logging.warning(b'client %s timed out sending the request line' % partner,
+                            'http_server:_handle_request')
+        except ValueError:  # request line exceeded LineReader's limit
+            await self.send_simple_response(
+                writer, HTTP_STATUS_BAD_REQUEST, self.CT_TEXT_HTML, b'request line too long'
+            )
         except Exception as ex:
             # don't let a bad client or a callback exception leak the socket;
             # the connection is simply closed in the finally block below.
-            logging.exception(
-                b'exception serving %s' % partner, 'http_server:serve_http_client', ex
-            )
+            if isinstance(ex, OSError) and (
+                    'FATAL_ALERT' in str(ex) or 'CONN_EOF' in str(ex) or 'ECONNRESET' in str(ex)
+            ):
+                logging.info(b'client went away', 'http_server:serve_http_client')
+            else:
+                logging.exception(
+                    b'exception serving %s' % partner, 'http_server:serve_http_client', ex
+                )
         finally:
             try:
                 writer.close()
@@ -330,29 +353,11 @@ class HttpServer:
             except Exception:
                 pass  # the peer may have gone away already.
 
-    async def _handle_request(self, reader, writer):
+    async def _handle_request(self, reader, writer, lines, request_line):
         t0 = milliseconds()
         http_status = HTTP_STATUS_INTERNAL_SERVER_ERROR
         bytes_sent = 0
         partner = writer.get_extra_info('peername')[0]
-        if logging.should_log(logging.DEBUG):
-            logging.debug(b'web client connected from %s' % partner, 'http_server:serve_http_client')
-        lines = LineReader(reader, max_line_length=_BUFFER_SIZE)
-        try:
-            request_line = await asyncio.wait_for(
-                lines.readline(), _REQUEST_TIMEOUT
-            )  # returns bytes
-        except TimeoutError:
-            logging.warning(b'client %s timed out sending the request line' % partner,
-                            'http_server:_handle_request')
-            return
-        except ValueError:  # request line exceeded LineReader's limit
-            http_status = HTTP_STATUS_BAD_REQUEST
-            response = b'request line too long'
-            bytes_sent = await self.send_simple_response(
-                writer, http_status, self.CT_TEXT_HTML, response
-            )
-            return
         request = request_line.strip()
         if logging.should_log(logging.DEBUG):
             logging.debug(b'request: %s' % request, 'http_server:serve_http_client')

@@ -22,7 +22,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.8'  # 2026-09-18
+__version__ = '0.9.9'  # 2026-10-29
 
 import sys
 import time
@@ -116,12 +116,12 @@ def is_ipv4(value) -> bool:
 
 def is_hostname(value) -> bool:
     """
-    Return True if value is a conservative hostname: 1-63 characters drawn from
+    Return True if value is a conservative hostname: 1-32 characters drawn from
     [A-Za-z0-9.-_]. Accepts dotted-quad IPv4 addresses as well.
     """
     if not isinstance(value, str):
         return False
-    if not (0 < len(value) <= 63):
+    if not (0 < len(value) <= 32):
         return False
     for c in value:
         if c not in _HOSTNAME_CHARS:

@@ -3,7 +3,7 @@
 #
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2024, 2025, 2026  J. B. Otterson N1KDO.'
-__version__ = '0.10.15'  # 2026-09-29
+__version__ = '0.10.17'  # 2026-10-26
 
 #
 # Copyright 2024, 2025, 2026 J. B. Otterson N1KDO.
@@ -29,6 +29,7 @@ __version__ = '0.10.15'  # 2026-09-29
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import asyncio
+from time import sleep
 
 import micro_logging as logging
 from utils import upython
@@ -113,7 +114,8 @@ class PicowNetwork:
     def deinit(self) -> None:
         if self._wlan is not None:
             self._wlan.active(False)
-            # self._wlan.deinit()   # is this needed?
+            sleep(0.5)
+            self._wlan.deinit()
         self._keepalive = False
         if self._keepalive_task is not None:
             self._keepalive_task.cancel()
@@ -154,6 +156,7 @@ class PicowNetwork:
                 await self.set_message(b'Starting setup WLAN.')
             logging.info('Starting setup WLAN...', 'PicowNetwork:connect_to_network')
             self._wlan = network.WLAN(network.WLAN.IF_AP)
+            self._wlan.deinit()  # clear any vestigial radio state left over from a soft reboot
             self._wlan.config(pm=self._wlan.PM_NONE)  # disable power save, this is a server.
             await sleep(0.1)
             logging.debug('Starting setup WLAN...1', 'PicowNetwork:connect_to_network')
@@ -200,16 +203,10 @@ class PicowNetwork:
                 await self.set_message(b'Connecting to WLAN.')
             logging.info('Connecting to WLAN...', 'PicowNetwork:connect_to_network')
             self._wlan = network.WLAN(network.WLAN.IF_STA)
+            self._wlan.deinit()  # clear any vestigial radio state left over from a soft reboot
             self._wlan.config(pm=self._wlan.PM_NONE)  # disable power save, this is a server.
             await sleep(0.1)
             logging.debug('Connecting to WLAN...1', 'PicowNetwork:connect_to_network')
-            self._wlan.active(True)
-            await sleep(0.1)
-            logging.info(b'  wlan.active()=%d' % self._wlan.active(), 'PicowNetwork:connect_to_network (new)')
-            # wlan.deinit turns off the onboard LED because it is connected to the CYW43
-            # turn it on again.
-            onboard = machine.Pin('LED', machine.Pin.OUT, value=0)
-            onboard.on()
             try:
                 if self._long_messages:
                     await self.set_message(b'Setting hostname\n%s' % self._hostname_bytes)
@@ -222,6 +219,13 @@ class PicowNetwork:
                 else:
                     await self.set_message(b'ERROR ', -10)
                 logging.error('Failed to set hostname.', 'PicowNetwork:connect_to_network')
+            self._wlan.active(True)
+            await sleep(0.1)
+            logging.info(b'  wlan.active()=%d' % self._wlan.active(), 'PicowNetwork:connect_to_network (new)')
+            # wlan.deinit turns off the onboard LED because it is connected to the CYW43
+            # turn it on again.
+            onboard = machine.Pin('LED', machine.Pin.OUT, value=0)
+            onboard.on()
             logging.debug('Connecting to WLAN...6', 'PicowNetwork:connect_to_network')
             await sleep(0.1)
 

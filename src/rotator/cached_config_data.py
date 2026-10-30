@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2026 J. B. Otterson N1KDO.'
-__version__ = '0.0.8'  # 2026-09-30
+__version__ = '0.0.9'  # 2026-10-26
 
 #
 # Copyright 2026 J. B. Otterson N1KDO.
@@ -127,7 +127,7 @@ class CachedConfigData:
                 self._config_data_bytes[key] = datab
             else:
                 logging.error(f'tried to get bytes value for "{key}" but "{datab}" is not a string',
-                              'cached_config_data:getb')
+                              'cached_config_data:get_bytes')
                 return None
         return datab
 
