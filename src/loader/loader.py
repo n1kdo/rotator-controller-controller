@@ -20,7 +20,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.10.91'  # 2026-10-01
+__version__ = '0.10.93'  # 2026-10-29
 
 """
 Note: to edit linux forced device names, edit
@@ -35,6 +35,8 @@ $ udevadm control --reload-rules
 $ udevadm trigger
 """
 import argparse
+import fnmatch
+import glob
 import hashlib
 import json
 import os
@@ -50,6 +52,14 @@ _BAUD_RATE = 115200
 _BUFFER_SIZE = 2048
 
 _WATCHDOG_PY = 'watchdog.py'
+
+
+def is_pattern(filename):
+    return '*' in filename or '?' in filename
+
+
+def matches_special(path, special_files_list):
+    return any(fnmatch.fnmatchcase(path, pattern) for pattern in special_files_list)
 
 class BytesConcatenator:
     """
@@ -154,6 +164,19 @@ def loader_reset(target):
     target.serial.write(b"\x04")  # control-D -- restart
     time.sleep(2)
 
+
+def loader_hard_reset(target):
+#   reset_data = BytesConcatenator()
+    time.sleep(2)
+    cmd = """import machine
+machine.reset()
+"""
+    target.exec_raw_no_follow(cmd)
+
+#    target.exec_(cmd, data_consumer=reset_data.write_bytes)
+    time.sleep(2)
+
+
 def loader_sha1(target, file=''):
     hash_data = BytesConcatenator()
     cmd = f"""import hashlib
@@ -245,12 +268,12 @@ def load_device(port, force=False,
     # clean up files that do not belong here.
     existing_files = loader_ls(target)
     for existing_file in existing_files:
-        if existing_file in special_files_list:
-            continue  # do not delete any special file
+        if matches_special(existing_file, special_files_list):
+            continue  # do not delete any special file (literal or wildcard match)
         safe_to_delete = True
         if existing_file[-1] == '/':
-            for special_file in special_files_list:
-                if existing_file in special_file:
+            for child in existing_files:
+                if child.startswith(existing_file) and matches_special(child, special_files_list):
                     safe_to_delete = False
                     break
         if not safe_to_delete:
@@ -283,10 +306,20 @@ def load_device(port, force=False,
             if file not in existing_files:
                 put_file(file, target, source_directory=source_directory)
 
-    # this is logic that will not overwrite any of the SPECIAL FILES if present,
-    # if it is not present, it will use the contents of $file.example
+    # this is logic that will not overwrite any of the SPECIAL FILES if present.
+    # if a special file is not present on the device, it will be seeded from
+    # the local <file>.example.  wildcard entries glob <pattern>.example locally
+    # and seed each match under its name without the .example suffix.
     for file in special_files_list:
-        if file not in existing_files:
+        if is_pattern(file):
+            for local_example in sorted(glob.glob(os.path.join(source_directory, file + '.example'))):
+                # relpath() uses the host OS separator; the device VFS always wants '/'.
+                device_path = os.path.relpath(local_example, source_directory)[:-len('.example')]
+                device_path = device_path.replace(os.sep, '/')
+                if device_path not in existing_files:
+                    put_file(device_path, target, source_directory=source_directory,
+                             src_file_name=os.path.relpath(local_example, source_directory))
+        elif file not in existing_files:
             put_file(file, target, source_directory=source_directory, src_file_name=f'{file}.example')
     target.exit_raw_repl()
     # done updating file system, restart the device and show the output

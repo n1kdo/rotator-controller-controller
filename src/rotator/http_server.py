@@ -23,9 +23,10 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 '''
-__version__ = '0.1.25'  # 2026-10-27
+__version__ = '0.1.28'  # 2026-11-11
 
 import asyncio
+import gc
 import os
 import re
 
@@ -221,7 +222,7 @@ class HttpServer:
         except Exception as exc:
             if isinstance(exc, OSError) and ('ECONNRESET' in str(exc) or 'CONN_EOF' in str(exc)
                                              or 'FATAL_ALERT' in str(exc)):
-                logging.info(b'client went away', 'http_server:serve_content')
+                logging.debug(b'client went away', 'http_server:serve_content')
             else:
                 logging.exception(b'error serving %s' % filename, 'http_server:serve_content', exc_info=exc)
         return content_length, HTTP_STATUS_OK
@@ -341,7 +342,7 @@ class HttpServer:
             if isinstance(ex, OSError) and (
                     'FATAL_ALERT' in str(ex) or 'CONN_EOF' in str(ex) or 'ECONNRESET' in str(ex)
             ):
-                logging.info(b'client went away', 'http_server:serve_http_client')
+                logging.debug(b'client went away', 'http_server:serve_http_client')
             else:
                 logging.exception(
                     b'exception serving %s' % partner, 'http_server:serve_http_client', ex
@@ -352,6 +353,7 @@ class HttpServer:
                 await writer.wait_closed()
             except Exception:
                 pass  # the peer may have gone away already.
+            gc.collect()
 
     async def _handle_request(self, reader, writer, lines, request_line):
         t0 = milliseconds()
@@ -794,7 +796,7 @@ async def api_remove_file_callback(
         try:
             os.remove(delete_filename)
             http_status = HTTP_STATUS_OK
-            response = f"removed {filename}"
+            response = "removed %s" % filename
         except OSError as ose:
             http_status = HTTP_STATUS_CONFLICT
             response = str(ose)
@@ -818,12 +820,12 @@ async def api_rename_file_callback(
         content_newname = _safe_content_path(http.content_dir, newname)
         if file_size(content_newname) >= 0:
             http_status = HTTP_STATUS_CONFLICT
-            response = f"new file {newname} already exists"
+            response = "new file %s already exists" % newname
         else:
             try:
                 os.rename(content_filename, content_newname)
                 http_status = HTTP_STATUS_OK
-                response = f"renamed {filename} to {newname}"
+                response = "renamed %s to %s" % (filename, newname)
             except Exception as ose:
                 http_status = HTTP_STATUS_CONFLICT
                 response = str(ose)

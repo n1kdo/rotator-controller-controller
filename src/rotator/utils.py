@@ -22,8 +22,9 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.9'  # 2026-10-29
+__version__ = '0.9.13'  # 2026-11-11
 
+import ssl
 import sys
 import time
 
@@ -32,7 +33,10 @@ BITS = bytes([0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4])
 upython = sys.implementation.name == 'micropython'
 if upython:
     import micropython
+    # Detect if we are running on the new RP2350 platform (Pico 2 W)
+    is_pico2 = "rp2350" in sys.implementation._machine.lower()
 else:
+    is_pico2 = False
     # provide no-op native and viper decorators
     class _MP:
         @staticmethod
@@ -47,17 +51,15 @@ else:
     micropython = _MP()
 
 
-@micropython.native
 def get_timestamp(tt=None):
     if tt is None:
         tt = time.gmtime()
-    return f'{tt[0]:04d}-{tt[1]:02d}-{tt[2]:02d} {tt[3]:02d}:{tt[4]:02d}:{tt[5]:02d}Z'
+    return '%04d-%02d-%02d %02d:%02d:%02dZ' % (tt[0], tt[1], tt[2], tt[3], tt[4], tt[5])
 
 
-@micropython.native
 def get_timestamp_from_secs(secs=None):
     tt = time.gmtime(secs)
-    return f'{tt[0]:04d}-{tt[1]:02d}-{tt[2]:02d} {tt[3]:02d}:{tt[4]:02d}:{tt[5]:02d}Z'
+    return '%04d-%02d-%02d %02d:%02d:%02dZ' % (tt[0], tt[1], tt[2], tt[3], tt[4], tt[5])
 
 
 def milliseconds():
@@ -118,6 +120,7 @@ def is_hostname(value) -> bool:
     """
     Return True if value is a conservative hostname: 1-32 characters drawn from
     [A-Za-z0-9.-_]. Accepts dotted-quad IPv4 addresses as well.
+    The 32-character limit matches the MicroPython network.hostname() limit.
     """
     if not isinstance(value, str):
         return False
@@ -127,6 +130,27 @@ def is_hostname(value) -> bool:
         if c not in _HOSTNAME_CHARS:
             return False
     return True
+
+
+def make_ssl_server_context(hostname):
+    """
+    Build an SSL context for serving HTTPS/TLS from the convention-named
+    cert/key files:
+        data/<hostname>.local.crt.der (certificate)
+        data/<hostname>.local.key.der (private key)
+    Returns a ssl.SSLContext, or None if either file is missing or invalid.
+    """
+    cert_file = 'data/%s.local.crt.der' % hostname
+    key_file = 'data/%s.local.key.der' % hostname
+    try:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(cert_file, key_file)
+    except Exception as exc:
+        import micro_logging as _logging  # deferred: micro_logging imports utils
+        _logging.warning('certificate missing or invalid: %s' % exc,
+                          'utils:make_ssl_server_context')
+        return None
+    return ctx
 
 
 class LineReader:
@@ -212,7 +236,7 @@ class LineReader:
 def num_bits_set(n: int) -> int:
     #       0000 0001 0010 0011 0100 0101 0110 0111 1000 1001 1010 1011 1100 1101 1111
     if not isinstance(n, int):
-        raise TypeError(f"num_bits_set expects an integer, got {type(n).__name__}")
+        raise TypeError("num_bits_set expects an integer, got %s" % type(n).__name__)
 
     nn = n
     set_bits = 0

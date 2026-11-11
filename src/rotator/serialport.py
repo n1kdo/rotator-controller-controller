@@ -24,7 +24,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.2'  # 2026-04-27
+__version__ = '0.9.3'  # 2026-10-30
 
 # disable pylint import error
 # pylint: disable=E0401
@@ -41,6 +41,9 @@ else:
 
 class SerialPort:
     def __init__(self, name='', baudrate=19200, timeout=0.040):
+        # Pre-allocate a zero-allocation scratch buffer for input flushing under MicroPython
+        self._flush_buf = bytearray(32) if upython else None
+
         if impl_name == 'cpython':
             if name == '':
                 name = 'com1:'
@@ -97,8 +100,10 @@ class SerialPort:
 
     def flush_input(self):
         if upython:
-            while self.any():
-                _ = self.port.read(self.any())
+            # Zero-allocation loop: drain the hardware ring buffer straight into the scratchpad
+            mv = memoryview(self._flush_buf)
+            while self.port.any() > 0:
+                self.port.readinto(mv)
         else:
             self.port.reset_input_buffer()
 

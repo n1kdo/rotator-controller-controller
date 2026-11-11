@@ -23,7 +23,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.2.5'  # 2026-10-02
+__version__ = '0.2.6'  # 2026-11-11
 
 import asyncio
 import gc
@@ -483,8 +483,8 @@ async def main():
 
 
 if __name__ == '__main__':
-    logging.loglevel = logging.INFO
-    # logging.loglevel = logging.DEBUG
+    logging.set_level(logging.INFO)
+    # logging.set_level(logging.DEBUG)
     logging.info('starting', 'main:__main__')
 
     try:
